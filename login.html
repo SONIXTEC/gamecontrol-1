@@ -294,13 +294,25 @@
         }
         
         function autenticarUsuario(email, password) {
-            console.log('🔐 Autenticando:', email);
+            console.log('🔐 Autenticando:', email, 'con password:', password);
             const usuarios = obtenerUsuarios();
+            console.log('👥 Usuarios disponibles:', usuarios);
             
+            // Buscar usuario con debug detallado
             const usuario = usuarios.find(u => {
-                return u.email.toLowerCase() === email.toLowerCase() && 
-                       u.password === password && 
-                       u.estado === 'activo';
+                const emailMatch = u.email.toLowerCase() === email.toLowerCase();
+                const passwordMatch = u.password === password;
+                const estadoActivo = u.estado === 'activo';
+                
+                console.log('🔍 Verificando usuario:', u.email, {
+                    emailMatch,
+                    passwordMatch,
+                    estadoActivo,
+                    passwordGuardada: u.password,
+                    passwordIngresada: password
+                });
+                
+                return emailMatch && passwordMatch && estadoActivo;
             });
             
             if (usuario) {
@@ -325,6 +337,7 @@
             }
             
             console.log('❌ Login fallido para:', email);
+            console.log('❌ No se encontró usuario activo con esas credenciales');
             return { success: false, mensaje: 'Credenciales incorrectas' };
         }
         
@@ -406,22 +419,45 @@
             // Verificar usuarios
             const usuarios = obtenerUsuarios();
             console.log('👥 Usuarios en sistema:', usuarios.length);
+            console.log('📋 Todos los usuarios:', usuarios);
             
             // Mostrar usuarios activos
             const usuariosActivos = usuarios.filter(u => u.estado === 'activo');
-            console.log('✅ Usuarios activos:', usuariosActivos.map(u => u.email));
+            console.log('✅ Usuarios activos:', usuariosActivos.map(u => ({ email: u.email, password: u.password })));
             
-            // Test rápido del administrador
-            if (usuariosActivos.length > 0) {
-                const admin = usuariosActivos.find(u => u.email === 'maurochica23@gmail.com');
-                if (admin) {
-                    console.log('🔑 Usuario admin encontrado:', admin.email);
-                    showAlert('Sistema OK. Admin disponible: maurochica23@gmail.com', 'success');
+            // Test directo del administrador
+            const admin = usuariosActivos.find(u => u.email === 'maurochica23@gmail.com');
+            if (admin) {
+                console.log('🔑 Usuario admin encontrado:', {
+                    email: admin.email,
+                    password: admin.password,
+                    estado: admin.estado
+                });
+                
+                // Test de login directo
+                const testResult = autenticarUsuario('maurochica23@gmail.com', 'admin123');
+                console.log('🧪 Test de login:', testResult);
+                
+                if (testResult.success) {
+                    showAlert('✅ Test exitoso! Las credenciales funcionan correctamente.', 'success');
                 } else {
-                    console.log('❌ Usuario admin NO encontrado');
-                    showAlert('Admin no encontrado. Recargando usuarios...', 'warning');
-                    inicializarUsuarioAdmin();
+                    showAlert('❌ Test fallido: ' + testResult.mensaje, 'danger');
                 }
+            } else {
+                console.log('❌ Usuario admin NO encontrado');
+                showAlert('Admin no encontrado. Recreando...', 'warning');
+                inicializarUsuarioAdmin();
+                
+                // Verificar después de crear
+                setTimeout(() => {
+                    const usuariosNuevos = obtenerUsuarios();
+                    const adminNuevo = usuariosNuevos.find(u => u.email === 'maurochica23@gmail.com');
+                    if (adminNuevo) {
+                        showAlert('✅ Admin recreado exitosamente', 'success');
+                    } else {
+                        showAlert('❌ Error: No se pudo crear el admin', 'danger');
+                    }
+                }, 500);
             }
         }
         
@@ -493,8 +529,26 @@
         window.addEventListener('load', function() {
             console.log('🟢 Página login.html completamente cargada');
             
+            // Limpiar posibles datos corruptos antes de inicializar
+            try {
+                const usuariosTest = JSON.parse(localStorage.getItem('usuarios') || '[]');
+                console.log('📊 Estado inicial usuarios:', usuariosTest.length);
+            } catch (error) {
+                console.log('🔧 Limpiando localStorage corrupto...');
+                localStorage.removeItem('usuarios');
+            }
+            
             // Asegurar que existe el usuario administrador
-            inicializarUsuarioAdmin();
+            const usuarios = inicializarUsuarioAdmin();
+            console.log('👥 Usuarios después de inicialización:', usuarios.length);
+            
+            // Verificar inmediatamente que el admin existe
+            const admin = usuarios.find(u => u.email === 'maurochica23@gmail.com');
+            if (admin) {
+                console.log('✅ Admin verificado:', admin.email, 'password:', admin.password);
+            } else {
+                console.error('❌ FALLO: Admin no encontrado después de inicialización');
+            }
             
             // Pre-llenar credenciales para facilitar el login
             const usernameField = document.getElementById('username');
