@@ -249,7 +249,7 @@
                             Recordarme
                         </label>
                     </div>
-                    <a href="#" class="text-decoration-none" onclick="showRecovery()">
+                    <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalCambiarPassword">
                         ¿Olvidaste tu contraseña?
                     </a>
                 </div>
@@ -280,6 +280,85 @@
         </div>
     </div>
 
+    <!-- Modal Cambiar Contraseña -->
+    <div class="modal fade" id="modalCambiarPassword" tabindex="-1" aria-labelledby="modalCambiarPasswordLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="modalCambiarPasswordLabel">
+                        <i class="fas fa-key me-2"></i>Cambiar Contraseña
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="formCambiarPassword">
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Sistema de seguridad:</strong> Al cambiar tu contraseña, recibirás un email de confirmación con la nueva contraseña.
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="emailCambio" class="form-label fw-semibold">
+                                <i class="fas fa-envelope me-2"></i>Email de tu cuenta
+                            </label>
+                            <input type="email" class="form-control" id="emailCambio" name="email" placeholder="Ingresa tu email" required>
+                            <div class="form-text">Debe coincidir con el email registrado en el sistema</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="passwordActual" class="form-label fw-semibold">
+                                <i class="fas fa-lock me-2"></i>Contraseña Actual
+                            </label>
+                            <input type="password" class="form-control" id="passwordActual" name="passwordActual" placeholder="Tu contraseña actual" required>
+                            <div class="form-text">Para verificar tu identidad</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="passwordNueva" class="form-label fw-semibold">
+                                <i class="fas fa-key me-2"></i>Nueva Contraseña
+                            </label>
+                            <input type="password" class="form-control" id="passwordNueva" name="passwordNueva" placeholder="Mínimo 6 caracteres" minlength="6" required>
+                            <div class="progress mt-2" style="height: 6px;">
+                                <div class="progress-bar" id="passwordStrength" style="width: 0%"></div>
+                            </div>
+                            <div class="form-text" id="passwordStrengthText">Ingresa una contraseña segura</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="passwordConfirm" class="form-label fw-semibold">
+                                <i class="fas fa-check me-2"></i>Confirmar Nueva Contraseña
+                            </label>
+                            <input type="password" class="form-control" id="passwordConfirm" name="passwordConfirm" placeholder="Repite la nueva contraseña" required>
+                            <div class="form-text" id="passwordMatchText"></div>
+                        </div>
+                        
+                        <!-- Alertas del modal -->
+                        <div id="alertModalContainer"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="btnCambiarPassword">
+                            <span class="text-cambio">
+                                <i class="fas fa-paper-plane me-2"></i>Enviar por Email
+                            </span>
+                            <span class="loading-cambio d-none">
+                                <i class="fas fa-spinner fa-spin me-2"></i>Enviando...
+                            </span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- EmailJS SDK -->
+    <script src="https://cdn.emailjs.com/dist/email.min.js"></script>
+    
+    <!-- Configuración de Email -->
+    <script src="js/email-config.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     
     <!-- Utilidades de Navegación -->
@@ -577,6 +656,263 @@
                     form.dispatchEvent(new Event('submit'));
                 }
             }
+        });
+        
+        // ===== SISTEMA DE CAMBIO DE CONTRASEÑAS =====
+        
+        // Inicializar EmailJS cuando esté disponible
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                if (typeof inicializarEmailJS === 'function') {
+                    inicializarEmailJS();
+                } else {
+                    console.warn('⚠️ Configuración de email no cargada. Usando modo simulación.');
+                }
+            }, 500);
+        });
+        
+        function showModalAlert(message, type = 'danger') {
+            const alertContainer = document.getElementById('alertModalContainer');
+            alertContainer.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    <i class="fas fa-${type === 'danger' ? 'exclamation-triangle' : type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            // Auto-hide después de 8 segundos
+            setTimeout(() => {
+                const alert = alertContainer.querySelector('.alert');
+                if (alert) {
+                    alert.remove();
+                }
+            }, 8000);
+        }
+        
+        function evaluarSeguridadPassword(password) {
+            let score = 0;
+            let feedback = '';
+            
+            if (password.length >= 8) score += 1;
+            if (password.match(/[a-z]/)) score += 1;
+            if (password.match(/[A-Z]/)) score += 1;
+            if (password.match(/[0-9]/)) score += 1;
+            if (password.match(/[^a-zA-Z0-9]/)) score += 1;
+            
+            const strengthBar = document.getElementById('passwordStrength');
+            const strengthText = document.getElementById('passwordStrengthText');
+            
+            switch(score) {
+                case 0:
+                case 1:
+                    strengthBar.className = 'progress-bar bg-danger';
+                    strengthBar.style.width = '20%';
+                    feedback = 'Muy débil';
+                    break;
+                case 2:
+                    strengthBar.className = 'progress-bar bg-warning';
+                    strengthBar.style.width = '40%';
+                    feedback = 'Débil';
+                    break;
+                case 3:
+                    strengthBar.className = 'progress-bar bg-info';
+                    strengthBar.style.width = '60%';
+                    feedback = 'Aceptable';
+                    break;
+                case 4:
+                    strengthBar.className = 'progress-bar bg-success';
+                    strengthBar.style.width = '80%';
+                    feedback = 'Fuerte';
+                    break;
+                case 5:
+                    strengthBar.className = 'progress-bar bg-success';
+                    strengthBar.style.width = '100%';
+                    feedback = 'Muy fuerte';
+                    break;
+            }
+            
+            strengthText.textContent = `Seguridad: ${feedback}`;
+            return score >= 3; // Mínimo aceptable
+        }
+        
+        function verificarCoincidenciaPasswords() {
+            const password = document.getElementById('passwordNueva').value;
+            const confirm = document.getElementById('passwordConfirm').value;
+            const matchText = document.getElementById('passwordMatchText');
+            
+            if (confirm === '') {
+                matchText.textContent = '';
+                return false;
+            }
+            
+            if (password === confirm) {
+                matchText.innerHTML = '<i class="fas fa-check text-success me-1"></i>Las contraseñas coinciden';
+                matchText.className = 'form-text text-success';
+                return true;
+            } else {
+                matchText.innerHTML = '<i class="fas fa-times text-danger me-1"></i>Las contraseñas no coinciden';
+                matchText.className = 'form-text text-danger';
+                return false;
+            }
+        }
+        
+        function guardarUsuarios(usuarios) {
+            localStorage.setItem('usuarios', JSON.stringify(usuarios));
+        }
+        
+        function cambiarPasswordUsuario(email, passwordActual, passwordNueva) {
+            const usuarios = obtenerUsuarios();
+            
+            // Buscar usuario
+            const usuario = usuarios.find(u => u.email.toLowerCase() === email.toLowerCase());
+            
+            if (!usuario) {
+                return { success: false, mensaje: 'Usuario no encontrado' };
+            }
+            
+            if (usuario.estado !== 'activo') {
+                return { success: false, mensaje: 'Usuario inactivo' };
+            }
+            
+            // Verificar contraseña actual
+            if (String(usuario.password).trim() !== String(passwordActual).trim()) {
+                return { success: false, mensaje: 'Contraseña actual incorrecta' };
+            }
+            
+            // Actualizar contraseña
+            usuario.password = passwordNueva;
+            usuario.ultimaModificacion = new Date().toISOString();
+            
+            // Guardar cambios
+            const usuariosActualizados = usuarios.map(u => u.id === usuario.id ? usuario : u);
+            guardarUsuarios(usuariosActualizados);
+            
+            return { 
+                success: true, 
+                usuario: usuario,
+                mensaje: 'Contraseña actualizada exitosamente' 
+            };
+        }
+        
+        
+        
+        // Event listeners para el modal de cambio de contraseña
+        document.addEventListener('DOMContentLoaded', function() {
+            const formCambio = document.getElementById('formCambiarPassword');
+            const passwordNueva = document.getElementById('passwordNueva');
+            const passwordConfirm = document.getElementById('passwordConfirm');
+            
+            // Evaluar seguridad mientras escribe
+            passwordNueva.addEventListener('input', function() {
+                evaluarSeguridadPassword(this.value);
+                verificarCoincidenciaPasswords();
+            });
+            
+            // Verificar coincidencia mientras escribe
+            passwordConfirm.addEventListener('input', verificarCoincidenciaPasswords);
+            
+            // Manejar envío del formulario
+            formCambio.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const email = document.getElementById('emailCambio').value.trim();
+                const passwordActual = document.getElementById('passwordActual').value;
+                const passwordNueva = document.getElementById('passwordNueva').value;
+                const passwordConfirm = document.getElementById('passwordConfirm').value;
+                
+                // Validaciones
+                if (!email || !passwordActual || !passwordNueva || !passwordConfirm) {
+                    showModalAlert('Por favor completa todos los campos', 'warning');
+                    return;
+                }
+                
+                if (passwordNueva !== passwordConfirm) {
+                    showModalAlert('Las contraseñas nuevas no coinciden', 'danger');
+                    return;
+                }
+                
+                if (!evaluarSeguridadPassword(passwordNueva)) {
+                    showModalAlert('La contraseña debe ser más segura. Usa al menos 8 caracteres con mayúsculas, minúsculas y números.', 'warning');
+                    return;
+                }
+                
+                // Mostrar loading
+                const btnCambiar = document.getElementById('btnCambiarPassword');
+                const textCambio = btnCambiar.querySelector('.text-cambio');
+                const loadingCambio = btnCambiar.querySelector('.loading-cambio');
+                
+                textCambio.classList.add('d-none');
+                loadingCambio.classList.remove('d-none');
+                btnCambiar.disabled = true;
+                
+                try {
+                    // Cambiar contraseña en el sistema
+                    const resultadoCambio = cambiarPasswordUsuario(email, passwordActual, passwordNueva);
+                    
+                    if (!resultadoCambio.success) {
+                        showModalAlert(resultadoCambio.mensaje, 'danger');
+                        return;
+                    }
+                    
+                                         // Enviar email de confirmación
+                     console.log('📧 Enviando email de confirmación...');
+                     
+                     // Intentar envío real o simulado
+                     let resultadoEmail;
+                     const usuario = resultadoCambio.usuario;
+                     
+                     if (typeof verificarConfiguracionEmail === 'function' && verificarConfiguracionEmail()) {
+                         // EmailJS configurado - Envío real
+                         resultadoEmail = await enviarEmailCambioPassword(email, usuario.nombre, passwordNueva);
+                     } else {
+                         // Modo simulación
+                         resultadoEmail = await simularEnvioEmail(email, usuario.nombre, passwordNueva);
+                     }
+                     
+                     if (resultadoEmail.success) {
+                         const tipoMensaje = resultadoEmail.simulado ? 'info' : 'success';
+                         const textoEmail = resultadoEmail.simulado ? 
+                             '📧 Email simulado (configurar EmailJS para envío real)' : 
+                             '📧 Email enviado correctamente';
+                         
+                         showModalAlert(
+                             `✅ ¡Contraseña cambiada exitosamente!<br>
+                             ${textoEmail}<br>
+                             📩 Destinatario: <strong>${email}</strong><br>
+                             🔐 Nueva contraseña: <strong>${passwordNueva}</strong>`, 
+                             tipoMensaje
+                         );
+                     } else {
+                         showModalAlert(
+                             `✅ Contraseña cambiada correctamente, pero hubo un problema enviando el email:<br>
+                             <strong>${resultadoEmail.mensaje}</strong><br>
+                             🔐 Tu nueva contraseña es: <strong>${passwordNueva}</strong>`, 
+                             'warning'
+                         );
+                     }
+                    
+                    // Limpiar formulario
+                    formCambio.reset();
+                    
+                    // Cerrar modal después de 3 segundos
+                    setTimeout(() => {
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('modalCambiarPassword'));
+                        if (modal) {
+                            modal.hide();
+                        }
+                    }, 3000);
+                    
+                } catch (error) {
+                    console.error('❌ Error en cambio de contraseña:', error);
+                    showModalAlert('Error interno del sistema. Inténtalo nuevamente.', 'danger');
+                } finally {
+                    // Restaurar botón
+                    textCambio.classList.remove('d-none');
+                    loadingCambio.classList.add('d-none');
+                    btnCambiar.disabled = false;
+                }
+            });
         });
     </script>
 </body>
