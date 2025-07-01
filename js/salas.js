@@ -1734,7 +1734,7 @@ class GestorSalas {
         });
     }
 
-    eliminarSala(salaId) {
+    async eliminarSala(salaId) {
         if (confirm('¿Estás seguro de que deseas eliminar esta sala?')) {
             // Verificar que no haya sesiones activas
             const tieneSesionesActivas = this.sesiones.some(s => s.salaId === salaId && !s.finalizada);
@@ -1743,21 +1743,37 @@ class GestorSalas {
                 return;
             }
 
-            // Eliminar la sala
-            this.salas = this.salas.filter(s => s.id !== salaId);
-            guardarSalas(this.salas);
+            try {
+                // Eliminar de Supabase si está disponible
+                if (window.databaseService) {
+                    const result = await window.databaseService.delete('salas', salaId);
+                    if (result.success) {
+                        console.log('✅ Sala eliminada de Supabase');
+                    } else {
+                        console.warn('⚠️ Error al eliminar de Supabase, continuando localmente');
+                    }
+                }
 
-            // Eliminar las tarifas asociadas
-            const config = obtenerConfiguracion();
-            delete config.tarifasPorSala[salaId];
-            guardarConfiguracion(config);
-            this.config = config;
+                // Eliminar la sala localmente
+                this.salas = this.salas.filter(s => s.id !== salaId);
+                guardarSalas(this.salas);
 
-            this.actualizarVista();
-            mostrarNotificacion('Sala eliminada correctamente', 'success');
-            
-            // Notificar a ajustes.js
-            window.dispatchEvent(new CustomEvent('salasActualizadas'));
+                // Eliminar las tarifas asociadas
+                const config = obtenerConfiguracion();
+                delete config.tarifasPorSala[salaId];
+                guardarConfiguracion(config);
+                this.config = config;
+
+                this.actualizarVista();
+                mostrarNotificacion('Sala eliminada correctamente', 'success');
+                
+                // Notificar a ajustes.js
+                window.dispatchEvent(new CustomEvent('salasActualizadas'));
+                
+            } catch (error) {
+                console.error('Error al eliminar sala:', error);
+                mostrarNotificacion('Error al eliminar la sala. Intenta nuevamente.', 'error');
+            }
         }
     }
 

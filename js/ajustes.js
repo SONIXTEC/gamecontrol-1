@@ -462,7 +462,11 @@ class SistemaAjustes {
             { selector: '.btn-limpiar-cache', metodo: 'limpiarCache' },
             { selector: '.btn-optimizar-db', metodo: 'optimizarBaseDatos' },
             { selector: '.btn-limpiar-registros', metodo: 'limpiarRegistros' },
-            { selector: '.btn-actualizar-sistema', metodo: 'verificarActualizaciones' }
+            { selector: '.btn-actualizar-sistema', metodo: 'verificarActualizaciones' },
+            // ===== NUEVOS BOTONES PARA GESTIÓN DE DATOS =====
+            { selector: '.btn-crear-datos-demo', metodo: 'crearDatosDemo' },
+            { selector: '.btn-limpiar-datos-demo', metodo: 'limpiarDatosDemo' },
+            { selector: '.btn-resetear-sistema', metodo: 'resetearSistema' }
         ];
 
         acciones.forEach(({ selector, metodo }) => {
@@ -731,6 +735,177 @@ class SistemaAjustes {
         } catch (error) {
             this.mostrarNotificacion('Error al crear respaldo', 'danger');
             console.error('Error al crear respaldo:', error);
+        }
+    }
+
+    // ==================== GESTIÓN DE DATOS DEMO ====================
+    crearDatosDemo() {
+        if (confirm('¿Deseas crear datos de demostración? Esto agregará salas, productos y sesiones de ejemplo.')) {
+            try {
+                console.log('🚀 Creando datos de demostración...');
+                
+                // Usar la función del archivo inicializar_datos_demo.js si está disponible
+                if (typeof window.inicializarDatosDemo === 'function') {
+                    const resultado = window.inicializarDatosDemo();
+                    if (resultado) {
+                        this.mostrarNotificacion('Datos de demostración creados exitosamente', 'success');
+                        this.actualizarVistaTarifas();
+                        // Notificar a otros módulos
+                        window.dispatchEvent(new CustomEvent('salasActualizadas'));
+                    } else {
+                        this.mostrarNotificacion('Ya existen datos en el sistema', 'info');
+                    }
+                } else {
+                    // Crear datos básicos manualmente si la función no está disponible
+                    this.crearDatosDemoManual();
+                }
+            } catch (error) {
+                console.error('❌ Error al crear datos demo:', error);
+                this.mostrarNotificacion('Error al crear datos de demostración', 'danger');
+            }
+        }
+    }
+
+    crearDatosDemoManual() {
+        // Crear salas básicas
+        const salasDemo = [
+            {
+                id: 'sala_demo_' + Date.now() + '_1',
+                nombre: 'Sala PlayStation Demo',
+                tipo: 'playstation',
+                numEstaciones: 4,
+                prefijo: 'PS',
+                tarifa: 5000,
+                estado: 'disponible'
+            },
+            {
+                id: 'sala_demo_' + Date.now() + '_2',
+                nombre: 'Sala PC Gaming Demo',
+                tipo: 'pc',
+                numEstaciones: 6,
+                prefijo: 'PC',
+                tarifa: 6000,
+                estado: 'disponible'
+            }
+        ];
+
+        const salasActuales = JSON.parse(localStorage.getItem('salas') || '[]');
+        const salasActualizadas = [...salasActuales, ...salasDemo];
+        localStorage.setItem('salas', JSON.stringify(salasActualizadas));
+
+        // Actualizar configuración de tarifas
+        const config = this.obtenerConfiguracion();
+        salasDemo.forEach(sala => {
+            config.tarifasPorSala[sala.id] = sala.tarifa;
+        });
+        this.guardarConfiguracion(config);
+
+        this.mostrarNotificacion('Datos demo básicos creados', 'success');
+        this.actualizarVistaTarifas();
+        window.dispatchEvent(new CustomEvent('salasActualizadas'));
+    }
+
+    limpiarDatosDemo() {
+        if (confirm('¿Deseas eliminar SOLO los datos de demostración? Esto mantendrá tus datos reales.')) {
+            try {
+                console.log('🧹 Limpiando datos de demostración...');
+                
+                // Usar la función del archivo inicializar_datos_demo.js si está disponible
+                if (typeof window.limpiarDatosDemo === 'function') {
+                    window.limpiarDatosDemo();
+                    this.mostrarNotificacion('Datos de demostración eliminados', 'success');
+                } else {
+                    // Limpiar datos demo manualmente
+                    this.limpiarDatosDemoManual();
+                }
+                
+                this.actualizarVistaTarifas();
+                window.dispatchEvent(new CustomEvent('salasActualizadas'));
+                
+            } catch (error) {
+                console.error('❌ Error al limpiar datos demo:', error);
+                this.mostrarNotificacion('Error al limpiar datos de demostración', 'danger');
+            }
+        }
+    }
+
+    limpiarDatosDemoManual() {
+        // Eliminar salas demo (que contengan 'demo' en el id o nombre)
+        const salas = JSON.parse(localStorage.getItem('salas') || '[]');
+        const salasLimpias = salas.filter(sala => 
+            !sala.id.includes('demo') && 
+            !sala.id.includes('_001') && 
+            !sala.id.includes('_002') && 
+            !sala.id.includes('_003') &&
+            !sala.nombre.toLowerCase().includes('demo')
+        );
+        localStorage.setItem('salas', JSON.stringify(salasLimpias));
+
+        // Eliminar productos demo
+        const productos = JSON.parse(localStorage.getItem('productos_stock') || '[]');
+        const productosLimpios = productos.filter(prod => 
+            !prod.id.includes('prod_') && 
+            !prod.nombre.toLowerCase().includes('demo')
+        );
+        localStorage.setItem('productos_stock', JSON.stringify(productosLimpios));
+
+        // Eliminar sesiones demo
+        const sesiones = JSON.parse(localStorage.getItem('sesiones') || '[]');
+        const sesionesDemoIds = ['sesion_001', 'sesion_002', 'sesion_003', 'sesion_004', 'sesion_005', 'sesion_006'];
+        const sesionesLimpias = sesiones.filter(sesion => 
+            !sesionesDemoIds.includes(sesion.id) &&
+            !sesion.salaId.includes('demo') &&
+            !sesion.salaId.includes('sala_001') &&
+            !sesion.salaId.includes('sala_002') &&
+            !sesion.salaId.includes('sala_003')
+        );
+        localStorage.setItem('sesiones', JSON.stringify(sesionesLimpias));
+
+        this.mostrarNotificacion('Datos demo eliminados manualmente', 'success');
+    }
+
+    resetearSistema() {
+        const confirmacion1 = confirm('⚠️ ATENCIÓN: Esto eliminará TODOS los datos del sistema y volverá al estado inicial. ¿Estás seguro?');
+        if (!confirmacion1) return;
+
+        const confirmacion2 = confirm('🔴 ÚLTIMA CONFIRMACIÓN: Se perderán todas las salas, sesiones, productos, ventas y configuraciones. ¿Proceder?');
+        if (!confirmacion2) return;
+
+        try {
+            console.log('🔄 Reseteando sistema completo...');
+            
+            // Eliminar todos los datos del localStorage
+            const clavesASistema = [
+                'configSistema',
+                'salas', 
+                'sesiones', 
+                'productos_stock', 
+                'ventas', 
+                'gastos', 
+                'notificaciones',
+                'configuracion'
+            ];
+            
+            clavesASistema.forEach(clave => {
+                localStorage.removeItem(clave);
+            });
+
+            // Limpiar también cualquier dato de Supabase si está conectado
+            if (window.databaseService) {
+                console.log('🗄️ Intentando limpiar datos de Supabase...');
+                // No eliminamos de Supabase automáticamente por seguridad
+            }
+
+            this.mostrarNotificacion('Sistema reseteado completamente. Recargando página...', 'success');
+            
+            // Recargar la página después de 2 segundos
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+            
+        } catch (error) {
+            console.error('❌ Error al resetear sistema:', error);
+            this.mostrarNotificacion('Error al resetear el sistema', 'danger');
         }
     }
 

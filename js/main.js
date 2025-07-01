@@ -180,8 +180,14 @@ document.addEventListener('DOMContentLoaded', () => {
         guardarConfiguracion(obtenerConfiguracion());
     }
     
-    // Crear salas de ejemplo si no existen
-    if (!localStorage.getItem('salas') || JSON.parse(localStorage.getItem('salas')).length === 0) {
+    // Crear salas de ejemplo SOLO en la primera instalación
+    const configuracionSistema = JSON.parse(localStorage.getItem('configSistema') || '{}');
+    const esPrimeraVez = !configuracionSistema.sistemaConfigurado;
+    const salas = JSON.parse(localStorage.getItem('salas') || '[]');
+    
+    if (esPrimeraVez && salas.length === 0) {
+        console.log('🚀 Primera instalación detectada - Creando salas de ejemplo...');
+        
         const salasEjemplo = [
             {
                 id: generarId(),
@@ -226,10 +232,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // Crear configuración inicial de tarifas
         const configInicial = obtenerConfiguracion();
         configInicial.tarifasPorSala = {};
+        configInicial.sistemaConfigurado = true; // ✅ Marcar como configurado
+        configInicial.fechaInstalacion = new Date().toISOString();
+        
         salasEjemplo.forEach(sala => {
             configInicial.tarifasPorSala[sala.id] = sala.tarifa;
         });
         guardarConfiguracion(configInicial);
+        
+        console.log('✅ Salas de ejemplo creadas (solo en primera instalación)');
+    } else if (esPrimeraVez) {
+        // Marcar como configurado sin crear salas
+        const configInicial = obtenerConfiguracion();
+        configInicial.sistemaConfigurado = true;
+        configInicial.fechaInstalacion = new Date().toISOString();
+        guardarConfiguracion(configInicial);
+        console.log('✅ Sistema marcado como configurado');
+    } else {
+        console.log('ℹ️ Sistema ya configurado - No se recrearán salas automáticamente');
     }
 
     // Crear productos de ejemplo si no existen
