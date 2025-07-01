@@ -301,15 +301,21 @@
             // Buscar usuario con debug detallado
             const usuario = usuarios.find(u => {
                 const emailMatch = u.email.toLowerCase() === email.toLowerCase();
-                const passwordMatch = u.password === password;
+                
+                // Comparación robusta de contraseñas
+                const passwordMatch = String(u.password).trim() === String(password).trim();
+                const passwordExact = u.password === password;
                 const estadoActivo = u.estado === 'activo';
                 
                 console.log('🔍 Verificando usuario:', u.email, {
                     emailMatch,
                     passwordMatch,
+                    passwordExact,
                     estadoActivo,
-                    passwordGuardada: u.password,
-                    passwordIngresada: password
+                    passwordGuardada: JSON.stringify(u.password),
+                    passwordIngresada: JSON.stringify(password),
+                    passwordTipo: typeof u.password,
+                    passwordLength: u.password ? u.password.length : 'null'
                 });
                 
                 return emailMatch && passwordMatch && estadoActivo;
