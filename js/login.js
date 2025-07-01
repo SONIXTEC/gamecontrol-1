@@ -113,8 +113,15 @@ function autenticarUsuario(email, password) {
 
 // Función para cerrar sesión
 function cerrarSesion() {
+    console.log('🚪 Cerrando sesión...');
     localStorage.removeItem('sesionActual');
-    window.location.href = 'login.html';
+    
+    if (window.navigationUtils) {
+        window.navigationUtils.logout();
+    } else {
+        // Fallback en caso de que no esté disponible
+        window.location.href = 'login.html';
+    }
 }
 
 // Función para verificar si hay sesión activa
@@ -279,8 +286,13 @@ function manejarLogin(e) {
             
             // Redireccionar después de 2.5 segundos para dar tiempo a leer el mensaje
             setTimeout(() => {
-                console.log('Redirigiendo a dashboard...');
-                window.location.href = 'index.html';
+                console.log('Redirigiendo a dashboard con navegación inteligente...');
+                if (window.navigationUtils) {
+                    window.navigationUtils.loginSuccess();
+                } else {
+                    // Fallback en caso de que no esté disponible
+                    window.location.href = 'index.html';
+                }
             }, 2500);
         } else {
             mostrarAlerta('error', resultado.mensaje);

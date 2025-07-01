@@ -23,7 +23,11 @@ function verificarAutenticacion() {
             // Sesión expirada
             localStorage.removeItem('sesionActual');
             alert('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.');
-            window.location.href = 'login.html';
+            if (window.navigationUtils) {
+                window.navigationUtils.logout();
+            } else {
+                window.location.href = 'login.html';
+            }
             return null;
         }
         
@@ -31,7 +35,11 @@ function verificarAutenticacion() {
     } catch (error) {
         // Sesión corrupta
         localStorage.removeItem('sesionActual');
-        window.location.href = 'login.html';
+        if (window.navigationUtils) {
+            window.navigationUtils.logout();
+        } else {
+            window.location.href = 'login.html';
+        }
         return null;
     }
 }
@@ -176,7 +184,11 @@ function verificarAccesoPagina() {
     
     if (permisoRequerido && !sesion.permisos[permisoRequerido]) {
         alert(`No tienes permisos para acceder a esta página.\n\nContacta al administrador si necesitas acceso.`);
-        window.location.href = 'index.html'; // Redireccionar al dashboard
+        if (window.navigationUtils) {
+            window.navigationUtils.navigateTo('index');
+        } else {
+            window.location.href = 'index.html'; // Redireccionar al dashboard
+        }
     }
 }
 
@@ -200,8 +212,15 @@ function configurarCerrarSesion() {
 
 // Función para cerrar sesión
 function cerrarSesion() {
+    console.log('🚪 Cerrando sesión desde auth.js...');
     localStorage.removeItem('sesionActual');
-    window.location.href = 'login.html';
+    
+    if (window.navigationUtils) {
+        window.navigationUtils.logout();
+    } else {
+        // Fallback en caso de que no esté disponible
+        window.location.href = 'login.html';
+    }
 }
 
 // Función para mostrar notificación de bienvenida (solo una vez por sesión)
@@ -311,7 +330,11 @@ function inicializarAutenticacion() {
             console.log('🎉 Inicialización completa para:', sesion.rol);
         } else {
             console.log('❌ No hay sesión activa, redirigiendo al login...');
-            window.location.href = 'login.html';
+            if (window.navigationUtils) {
+                window.navigationUtils.navigateTo('login');
+            } else {
+                window.location.href = 'login.html';
+            }
         }
     } else {
         console.log('Es página de login, no verificando autenticación.');
@@ -609,7 +632,11 @@ class AuthSystem {
         const requiredPermission = pagePermissions[currentPage];
         if (requiredPermission && !user.permisos.some(p => requiredPermission.includes(p))) {
             alert('No tienes permisos para acceder a esta página');
-            window.location.href = 'index.html';
+            if (window.navigationUtils) {
+                window.navigationUtils.navigateTo('index');
+            } else {
+                window.location.href = 'index.html';
+            }
         }
     }
 
@@ -657,7 +684,11 @@ class AuthSystem {
 
     // Crear página de login
     createLoginPage() {
-        window.location.href = 'login.html';
+        if (window.navigationUtils) {
+            window.navigationUtils.navigateTo('login');
+        } else {
+            window.location.href = 'login.html';
+        }
     }
 
     // Obtener usuario actual

@@ -16,7 +16,7 @@
    ```
    Repository name: gamecontrol
    Description: 🎮 Sistema completo de gestión para salas de videojuegos con integración Supabase
-   Visibility: ✅ Public (o Private si prefieres)
+   Visibility: ✅ Public (recomendado)
    
    ❌ NO marcar "Add a README file"
    ❌ NO marcar "Add .gitignore"  
@@ -178,3 +178,14 @@ Una vez completados estos pasos, tendrás:
 ✅ **Respaldo seguro** en la nube
 
 **¡Tu proyecto GameControl estará disponible mundialmente en GitHub! 🌍** 
+
+https://github.com/TU-USERNAME/gamecontrol 
+
+🌐 https://maurolegal.github.io/gamecontrol 
+
+Dashboard: https://maurolegal.github.io/gamecontrol/
+Ajustes: https://maurolegal.github.io/gamecontrol/pages/ajustes.html
+Gastos: https://maurolegal.github.io/gamecontrol/pages/gastos.html 
+
+Usuario: maurochica23@gmail.com
+Contraseña: admin123 

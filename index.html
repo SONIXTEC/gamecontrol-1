@@ -109,7 +109,7 @@
                                         </small>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="#" onclick="authSystem.logout()"><i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión</a></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="window.navigationUtils.logout()"><i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión</a></li>
                                 </ul>
                             </div>
                         </div>
@@ -319,6 +319,9 @@
     <script src="js/supabase-config.js"></script>
     <script src="js/database-service.js"></script>
     <script src="js/auth-adapter.js"></script>
+    
+    <!-- Utilidades de Navegación (Debe ir ANTES de otros scripts) -->
+    <script src="js/navigation-utils.js"></script>
     
     <!-- Scripts del Sistema -->
     <script src="js/main.js"></script>
