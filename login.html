@@ -285,14 +285,55 @@
     <!-- Utilidades de Navegación (Debe ir ANTES de login.js) -->
     <script src="js/navigation-utils.js"></script>
     
+    <!-- Sistema de Login -->
     <script src="js/login.js"></script>
     <script>
         // DEBUG: Confirmar que el script se ejecuta
         console.log('🟢 Script de login.html cargando...');
         
+        // === FUNCIONES DE SOPORTE PARA LOGIN ===
+        function obtenerUsuarios() {
+            return JSON.parse(localStorage.getItem('usuarios') || '[]');
+        }
+        
+        function autenticarUsuario(email, password) {
+            console.log('🔐 Autenticando:', email);
+            const usuarios = obtenerUsuarios();
+            
+            const usuario = usuarios.find(u => {
+                return u.email.toLowerCase() === email.toLowerCase() && 
+                       u.password === password && 
+                       u.estado === 'activo';
+            });
+            
+            if (usuario) {
+                // Actualizar último acceso
+                usuario.ultimoAcceso = new Date().toISOString();
+                const usuariosActualizados = usuarios.map(u => u.id === usuario.id ? usuario : u);
+                localStorage.setItem('usuarios', JSON.stringify(usuariosActualizados));
+                
+                // Guardar sesión
+                const sesion = {
+                    id: usuario.id,
+                    nombre: usuario.nombre,
+                    email: usuario.email,
+                    rol: usuario.rol,
+                    permisos: usuario.permisos,
+                    fechaLogin: new Date().toISOString()
+                };
+                
+                localStorage.setItem('sesionActual', JSON.stringify(sesion));
+                console.log('✅ Login exitoso para:', usuario.nombre);
+                return { success: true, usuario: sesion };
+            }
+            
+            console.log('❌ Login fallido para:', email);
+            return { success: false, mensaje: 'Credenciales incorrectas' };
+        }
+        
         // === INICIALIZACIÓN DE USUARIO ADMINISTRADOR ===
         function inicializarUsuarioAdmin() {
-            const usuarios = obtenerUsuarios();
+            let usuarios = obtenerUsuarios();
             
             // Verificar si existe el usuario administrador real
             const usuarioAdmin = usuarios.find(u => u.email === 'maurochica23@gmail.com');
@@ -321,11 +362,11 @@
                     }
                 };
                 
-                // Guardar solo el usuario administrador real
-                localStorage.setItem('usuarios', JSON.stringify([usuarioReal]));
+                usuarios.push(usuarioReal);
+                localStorage.setItem('usuarios', JSON.stringify(usuarios));
                 console.log('✅ Usuario administrador creado: maurochica23@gmail.com');
                 
-                return [usuarioReal];
+                return usuarios;
             }
             
             console.log('✅ Usuario administrador encontrado');
@@ -358,35 +399,33 @@
         // Función de debug temporal
         function debugLogin() {
             console.log('🔧 === DEBUG LOGIN ===');
-            console.log('📍 URL actual:', window.location.href);
-            console.log('🔍 ¿Existe obtenerUsuarios?', typeof obtenerUsuarios);
-            console.log('🔍 ¿Existe autenticarUsuario?', typeof autenticarUsuario);
             
-            // Verificar todos los datos en localStorage
-            console.log('💾 Datos en localStorage:');
-            console.log('- usuarios (sistema original):', localStorage.getItem('usuarios'));
-            console.log('- salas_users (AuthSystem):', localStorage.getItem('salas_users'));
-            console.log('- sesionActual:', localStorage.getItem('sesionActual'));
-            console.log('- salas_current_session:', localStorage.getItem('salas_current_session'));
+            // Verificar funciones
+            console.log('Funciones disponibles:', {
+                obtenerUsuarios: typeof obtenerUsuarios,
+                autenticarUsuario: typeof autenticarUsuario
+            });
             
-            if (typeof obtenerUsuarios === 'function') {
-                const usuarios = obtenerUsuarios();
-                console.log('👥 Usuarios del sistema original:', usuarios);
-                
-                // Test de login directo con el primer usuario
-                if (usuarios.length > 0) {
-                    const primerUsuario = usuarios.find(u => u.estado === 'activo');
-                    if (primerUsuario) {
-                        console.log('🧪 Probando login con:', primerUsuario.email);
-                        const testResult = autenticarUsuario(primerUsuario.email, primerUsuario.password);
-                        console.log('📋 Resultado del test:', testResult);
-                    }
+            // Verificar usuarios
+            const usuarios = obtenerUsuarios();
+            console.log('👥 Usuarios en sistema:', usuarios.length);
+            
+            // Mostrar usuarios activos
+            const usuariosActivos = usuarios.filter(u => u.estado === 'activo');
+            console.log('✅ Usuarios activos:', usuariosActivos.map(u => u.email));
+            
+            // Test rápido del administrador
+            if (usuariosActivos.length > 0) {
+                const admin = usuariosActivos.find(u => u.email === 'maurochica23@gmail.com');
+                if (admin) {
+                    console.log('🔑 Usuario admin encontrado:', admin.email);
+                    showAlert('Sistema OK. Admin disponible: maurochica23@gmail.com', 'success');
+                } else {
+                    console.log('❌ Usuario admin NO encontrado');
+                    showAlert('Admin no encontrado. Recargando usuarios...', 'warning');
+                    inicializarUsuarioAdmin();
                 }
-            } else {
-                console.error('❌ Sistema original no está disponible');
             }
-            
-            alert('Debug ejecutado. Revisa la consola (F12) para ver los resultados.');
         }
         
         // Manejar envío del formulario
@@ -412,9 +451,9 @@
                     const password = document.getElementById('password').value;
                     console.log('📝 Credenciales:', { email, password: '***' });
                     
-                    // Verificar que el sistema original existe
+                    // Verificar que las funciones existen (ya están definidas arriba)
                     if (typeof autenticarUsuario !== 'function') {
-                        console.error('❌ Sistema de autenticación no está disponible');
+                        console.error('❌ Función autenticarUsuario no disponible');
                         showAlert('Error del sistema. Recarga la página.');
                         return;
                     }
@@ -456,12 +495,21 @@
         // Inicializar página de login
         window.addEventListener('load', function() {
             console.log('🟢 Página login.html completamente cargada');
-            console.log('🔍 ¿Existe obtenerUsuarios?', typeof obtenerUsuarios);
             
             // Asegurar que existe el usuario administrador
             inicializarUsuarioAdmin();
             
-            console.log('✅ Sistema de login listo - Ingresa maurochica23@gmail.com');
+            // Pre-llenar credenciales para facilitar el login
+            const usernameField = document.getElementById('username');
+            const passwordField = document.getElementById('password');
+            
+            if (usernameField && passwordField) {
+                usernameField.value = 'maurochica23@gmail.com';
+                passwordField.value = 'admin123';
+                console.log('✅ Credenciales pre-llenadas');
+            }
+            
+            console.log('✅ Sistema de login listo - Presiona Iniciar Sesión');
         });
         
         // Permitir login con Enter en los campos
