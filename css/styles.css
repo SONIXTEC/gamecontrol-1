@@ -455,14 +455,16 @@ body {
 @media (max-width: 768px) {
     .sidebar {
         transform: translateX(-100%);
-        transition: transform 0.3s ease;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         z-index: 1055;
         width: var(--sidebar-width);
         position: fixed;
         top: 0;
         left: 0;
         height: 100vh;
-        box-shadow: 5px 0 15px rgba(0, 0, 0, 0.3);
+        box-shadow: 5px 0 25px rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
     }
     
     .sidebar.show {
@@ -475,20 +477,32 @@ body {
         transition: margin-left 0.3s ease;
     }
 
-    /* Overlay cuando el menú está abierto */
+    /* Overlay cuando el menú está abierto - MEJORADO */
     .sidebar-overlay {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.6);
         z-index: 1054;
-        display: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        -webkit-tap-highlight-color: transparent;
     }
 
     .sidebar-overlay.show {
-        display: block;
+        opacity: 1;
+        visibility: visible;
+    }
+    
+    /* Prevenir scroll del body cuando el menú está abierto */
+    body.menu-open {
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+        height: 100%;
     }
 }
 
@@ -2777,7 +2791,7 @@ body {
 
     /* Menú hamburguesa mejorado */
     .menu-toggle {
-        display: block;
+        display: flex !important;
         position: fixed;
         top: 1rem;
         left: 1rem;
@@ -2785,34 +2799,49 @@ body {
         background: var(--primary-color);
         color: white;
         border: none;
-        width: 45px;
-        height: 45px;
-        border-radius: 0.75rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-        transition: all 0.3s ease;
-        display: flex;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         align-items: center;
         justify-content: center;
-        font-size: 1.1rem;
+        font-size: 1.2rem;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
     }
 
     .menu-toggle:hover {
-        background: var(--primary-hover, #357abd);
-        box-shadow: 0 6px 16px rgba(0,0,0,0.35);
-        transform: translateY(-2px);
+        background: #357abd;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        transform: translateY(-2px) scale(1.05);
     }
 
     .menu-toggle:active {
-        transform: translateY(0);
-        box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+        transform: translateY(-1px) scale(0.98);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
 
     .menu-toggle i {
-        transition: transform 0.3s ease;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: none;
+    }
+
+    .menu-toggle.active {
+        background: #dc2626;
+        box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
     }
 
     .menu-toggle.active i {
-        transform: rotate(90deg);
+        transform: rotate(180deg);
+    }
+    
+    /* Asegurar que el botón sea visible en desktop (oculto) */
+    @media (min-width: 769px) {
+        .menu-toggle {
+            display: none !important;
+        }
     }
 
     /* Limpieza de reglas duplicadas */

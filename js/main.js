@@ -355,12 +355,16 @@ function inicializarMenuMovil() {
             sidebar.classList.add('show');
             sidebarOverlay.classList.add('show');
             menuToggle.classList.add('active');
-            document.body.style.overflow = 'hidden'; // Prevenir scroll del body
+            document.body.classList.add('menu-open'); // Prevenir scroll del body
             
             // Cambiar icono con animación
             const icon = menuToggle.querySelector('i');
             icon.classList.remove('fa-bars');
             icon.classList.add('fa-times');
+            
+            // Añadir ARIA para accesibilidad
+            sidebar.setAttribute('aria-hidden', 'false');
+            menuToggle.setAttribute('aria-expanded', 'true');
         }
         
         // Función para cerrar el menú
@@ -368,12 +372,16 @@ function inicializarMenuMovil() {
             sidebar.classList.remove('show');
             sidebarOverlay.classList.remove('show');
             menuToggle.classList.remove('active');
-            document.body.style.overflow = ''; // Restaurar scroll del body
+            document.body.classList.remove('menu-open'); // Restaurar scroll del body
             
             // Cambiar icono con animación
             const icon = menuToggle.querySelector('i');
             icon.classList.remove('fa-times');
             icon.classList.add('fa-bars');
+            
+            // Restaurar ARIA para accesibilidad
+            sidebar.setAttribute('aria-hidden', 'true');
+            menuToggle.setAttribute('aria-expanded', 'false');
         }
         
         // Toggle del menú
@@ -605,6 +613,9 @@ function inicializarSesionDemo() {
 
 // Ejecutar después de que el sistema de auth esté cargado
 document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar sistema responsivo PRIMERO
+    inicializarResponsivo();
+    
     // Esperar a que el sistema de auth esté disponible
     setTimeout(() => {
         if (window.authSystem) {
