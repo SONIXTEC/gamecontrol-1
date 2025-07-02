@@ -3,273 +3,385 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debug Sincronización Auth - GameControl</title>
+    <title>Debug Autenticación - GameControl</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background: #1a1a1a; color: white; }
-        .debug-output { 
-            background: #000; 
-            color: #00ff00; 
-            font-family: 'Courier New', monospace; 
-            font-size: 0.9rem;
-            max-height: 400px;
-            overflow-y: auto;
+        body {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        .card { background: #2d2d2d; border: 1px solid #444; }
-        .btn-debug { margin: 5px; }
+        
+        .debug-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin: 2rem auto;
+            max-width: 1000px;
+        }
+        
+        .debug-card {
+            border: none;
+            border-radius: 15px;
+            margin-bottom: 1rem;
+            border-left: 5px solid #e74c3c;
+        }
+        
+        .log-container {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 10px;
+            padding: 1rem;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .error { color: #e74c3c; }
+        .success { color: #27ae60; }
+        .warning { color: #f39c12; }
+        .info { color: #3498db; }
+        
+        .btn-debug {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            border: none;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            margin: 0.25rem;
+        }
+        
+        .btn-debug:hover {
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .credentials-box {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            border-left: 4px solid #e74c3c;
+        }
     </style>
 </head>
 <body>
-    <div class="container-fluid mt-3">
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header bg-danger text-white">
-                        <h4 class="mb-0">
-                            <i class="fas fa-bug me-2"></i>
-                            Debug Sincronización Autenticación
-                        </h4>
-                        <small>Herramienta para diagnosticar diferencias entre móvil y PC</small>
+    <div class="container">
+        <div class="debug-container">
+            <div class="text-center mb-4">
+                <h1 class="h2 fw-bold text-danger">
+                    <i class="fas fa-bug me-2"></i>
+                    Debug Autenticación
+                </h1>
+                <p class="text-muted">Diagnóstico de problemas de login</p>
+            </div>
+            
+            <!-- Credenciales -->
+            <div class="card debug-card">
+                <div class="card-body">
+                    <h5><i class="fas fa-key me-2 text-danger"></i>Credenciales a Verificar</h5>
+                    <div class="credentials-box">
+                        <strong>Email:</strong> maurochica23@gmail.com<br>
+                        <strong>Contraseña:</strong> kennia23
                     </div>
-                    <div class="card-body">
-                        
-                        <!-- Información del Dispositivo -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <h5><i class="fas fa-mobile-alt me-2"></i>Información del Dispositivo</h5>
-                                <div id="deviceInfo" class="debug-output p-3 rounded">
-                                    Cargando información del dispositivo...
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <h5><i class="fas fa-database me-2"></i>Estado localStorage</h5>
-                                <div id="storageInfo" class="debug-output p-3 rounded">
-                                    Cargando información de almacenamiento...
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Controles de Debug -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <h5><i class="fas fa-tools me-2"></i>Controles de Debug</h5>
-                                <div class="btn-group flex-wrap">
-                                    <button class="btn btn-primary btn-debug" onclick="analizarUsuarios()">
-                                        <i class="fas fa-users me-1"></i>Analizar Usuarios
-                                    </button>
-                                    <button class="btn btn-warning btn-debug" onclick="testearAutenticacion()">
-                                        <i class="fas fa-key me-1"></i>Test Autenticación
-                                    </button>
-                                    <button class="btn btn-info btn-debug" onclick="sincronizarUsuarios()">
-                                        <i class="fas fa-sync me-1"></i>Sincronizar Usuarios
-                                    </button>
-                                    <button class="btn btn-success btn-debug" onclick="repararAutenticacion()">
-                                        <i class="fas fa-wrench me-1"></i>Reparar Auth
-                                    </button>
-                                    <button class="btn btn-secondary btn-debug" onclick="exportarDatos()">
-                                        <i class="fas fa-download me-1"></i>Exportar
-                                    </button>
-                                    <button class="btn btn-danger btn-debug" onclick="limpiarTodo()">
-                                        <i class="fas fa-trash me-1"></i>Limpiar Todo
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Área de Logs -->
-                        <div class="row">
-                            <div class="col-12">
-                                <h5><i class="fas fa-terminal me-2"></i>Logs de Debug</h5>
-                                <div id="debugLogs" class="debug-output p-3 rounded" style="min-height: 300px;">
-                                    === SISTEMA DE DEBUG AUTENTICACIÓN ===<br>
-                                    Dispositivo: <span id="deviceType">Detectando...</span><br>
-                                    Timestamp: <span id="timestamp"></span><br>
-                                    ==========================================<br><br>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Test de Login -->
-                        <div class="row mt-4">
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header bg-success">
-                                        <h6 class="mb-0"><i class="fas fa-sign-in-alt me-2"></i>Test de Login</h6>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="mb-3">
-                                            <label class="form-label">Email</label>
-                                            <input type="email" class="form-control" id="testEmail" value="maurochica23@gmail.com">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Contraseña</label>
-                                            <input type="password" class="form-control" id="testPassword" value="kennia23">
-                                        </div>
-                                        <button class="btn btn-success w-100" onclick="testLogin()">
-                                            <i class="fas fa-test-tube me-2"></i>Probar Login
-                                        </button>
-                                        <div id="loginResult" class="mt-3"></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header bg-info">
-                                        <h6 class="mb-0"><i class="fas fa-code me-2"></i>Código QR para Móvil</h6>
-                                    </div>
-                                    <div class="card-body text-center">
-                                        <p>Escanea para acceder desde móvil:</p>
-                                        <div id="qrCode" class="mb-3">
-                                            <div class="bg-dark p-4 rounded">
-                                                <i class="fas fa-qrcode fa-4x text-white"></i><br>
-                                                <small class="text-muted mt-2 d-block">QR Code</small>
-                                            </div>
-                                        </div>
-                                        <code id="currentUrl" class="small"></code>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
+                </div>
+            </div>
+            
+            <!-- Botones de debug -->
+            <div class="text-center mb-4">
+                <button class="btn btn-debug" onclick="verificarConexion()">
+                    <i class="fas fa-wifi me-2"></i>Verificar Conexión
+                </button>
+                <button class="btn btn-debug" onclick="buscarUsuario()">
+                    <i class="fas fa-search me-2"></i>Buscar Usuario
+                </button>
+                <button class="btn btn-debug" onclick="crearUsuario()">
+                    <i class="fas fa-user-plus me-2"></i>Crear Usuario
+                </button>
+                <button class="btn btn-debug" onclick="probarLogin()">
+                    <i class="fas fa-sign-in-alt me-2"></i>Probar Login
+                </button>
+                <button class="btn btn-outline-secondary" onclick="limpiarLogs()">
+                    <i class="fas fa-trash me-2"></i>Limpiar
+                </button>
+            </div>
+            
+            <!-- Logs -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-terminal me-2"></i>Logs de Debug
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="debugLogs" class="log-container">
+                        <div class="info">🔍 Debug de autenticación iniciado</div>
+                        <div class="info">💡 Usa los botones arriba para diagnosticar el problema</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    
     <script>
-        // === FUNCIONES UTILITARIAS ===
-        function log(message, type = 'info') {
-            const logsDiv = document.getElementById('debugLogs');
+        // Credenciales para debug
+        const DEBUG_CREDENTIALS = {
+            email: 'maurochica23@gmail.com',
+            password: 'kennia23'
+        };
+        
+        // Configuración directa de Supabase
+        const SUPABASE_CONFIG = {
+            url: 'https://tateokatiqzcdobgjdwk.supabase.co',
+            anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhdGVva2F0aXF6Y2RvYmdqZHdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzODc4MDQsImV4cCI6MjA2Njk2MzgwNH0.ADajccIXfww1OeHK4nZ6IM9dChWe18aQHo-QPjnMV6Y'
+        };
+        
+        let supabaseClient = null;
+        
+        // Función para agregar logs
+        function addDebugLog(message, type = 'info') {
+            const logContainer = document.getElementById('debugLogs');
             const timestamp = new Date().toLocaleTimeString();
-            const icon = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
             
-            logsDiv.innerHTML += `[${timestamp}] ${icon} ${message}<br>`;
-            logsDiv.scrollTop = logsDiv.scrollHeight;
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
         }
-
-        function detectDevice() {
-            const userAgent = navigator.userAgent;
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-            const isTablet = /iPad|Android.*(?:Tablet|Tab)/i.test(userAgent);
-            const isTouch = 'ontouchstart' in window;
-            
-            return {
-                userAgent,
-                isMobile,
-                isTablet,
-                isTouch,
-                platform: navigator.platform,
-                language: navigator.language,
-                cookieEnabled: navigator.cookieEnabled,
-                onLine: navigator.onLine
-            };
+        
+        // Limpiar logs
+        function limpiarLogs() {
+            const logContainer = document.getElementById('debugLogs');
+            logContainer.innerHTML = `
+                <div class="info">🔍 Debug de autenticación iniciado</div>
+                <div class="info">💡 Usa los botones arriba para diagnosticar el problema</div>
+            `;
         }
-
-        // === FUNCIONES DE ANÁLISIS ===
-        function analizarUsuarios() {
-            log('🔍 Analizando usuarios almacenados...', 'info');
-            
+        
+        // Inicializar Supabase directamente
+        function initializeSupabaseDirect() {
             try {
-                const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-                log(`📊 Total usuarios encontrados: ${usuarios.length}`, 'info');
-                
-                if (usuarios.length === 0) {
-                    log('❌ No hay usuarios en localStorage', 'error');
-                    return;
+                if (typeof createClient === 'undefined') {
+                    addDebugLog('❌ Librería Supabase no cargada', 'error');
+                    addDebugLog('💡 Verifica que el script de Supabase esté cargado', 'warning');
+                    return null;
                 }
                 
-                usuarios.forEach((usuario, index) => {
-                    log(`👤 Usuario ${index + 1}:`, 'info');
-                    log(`   Email: ${usuario.email}`, 'info');
-                    log(`   Password: ${JSON.stringify(usuario.password)} (tipo: ${typeof usuario.password})`, 'info');
-                    log(`   Estado: ${usuario.estado}`, 'info');
-                    log(`   Rol: ${usuario.rol}`, 'info');
-                    log(`   ID: ${usuario.id}`, 'info');
-                    log(`   Fecha creación: ${usuario.fechaCreacion}`, 'info');
-                    log('   ---', 'info');
-                });
+                addDebugLog('🔧 Inicializando cliente Supabase directamente...', 'info');
+                addDebugLog(`🔗 URL: ${SUPABASE_CONFIG.url}`, 'info');
                 
-                // Verificar específicamente el admin
-                const admin = usuarios.find(u => u.email === 'maurochica23@gmail.com');
-                if (admin) {
-                    log('✅ Usuario administrador encontrado', 'success');
-                    log(`🔐 Password del admin: "${admin.password}" (longitud: ${admin.password.length})`, 'info');
-                    
-                    // Test de comparación de contraseñas
-                    const testPass = 'kennia23';
-                    const match1 = admin.password === testPass;
-                    const match2 = String(admin.password).trim() === String(testPass).trim();
-                    
-                    log(`🧪 Test comparación exacta: ${match1}`, match1 ? 'success' : 'error');
-                    log(`🧪 Test comparación string: ${match2}`, match2 ? 'success' : 'error');
+                supabaseClient = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+                
+                if (supabaseClient) {
+                    addDebugLog('✅ Cliente Supabase inicializado correctamente', 'success');
+                    return supabaseClient;
                 } else {
-                    log('❌ Usuario administrador NO encontrado', 'error');
+                    addDebugLog('❌ Error inicializando cliente Supabase', 'error');
+                    return null;
                 }
                 
             } catch (error) {
-                log(`❌ Error analizando usuarios: ${error.message}`, 'error');
+                addDebugLog(`❌ Error en inicialización: ${error.message}`, 'error');
+                return null;
             }
         }
-
-        function testearAutenticacion() {
-            log('🔑 Testeando sistema de autenticación...', 'info');
+        
+        // Verificar conexión a Supabase
+        async function verificarConexion() {
+            addDebugLog('🔄 Verificando conexión a Supabase...', 'info');
             
-            // Verificar funciones disponibles
-            const funcionesAuth = [
-                'obtenerUsuarios',
-                'autenticarUsuario',
-                'inicializarUsuarioAdmin'
-            ];
-            
-            funcionesAuth.forEach(func => {
-                const disponible = typeof window[func] === 'function';
-                log(`📋 ${func}: ${disponible ? 'Disponible' : 'NO disponible'}`, disponible ? 'success' : 'error');
-            });
-            
-            // Test directo si las funciones están disponibles
-            if (typeof window.obtenerUsuarios === 'function') {
-                try {
-                    const usuarios = window.obtenerUsuarios();
-                    log(`✅ obtenerUsuarios() ejecutada: ${usuarios.length} usuarios`, 'success');
-                } catch (error) {
-                    log(`❌ Error en obtenerUsuarios(): ${error.message}`, 'error');
-                }
-            }
-            
-            if (typeof window.autenticarUsuario === 'function') {
-                try {
-                    const resultado = window.autenticarUsuario('maurochica23@gmail.com', 'kennia23');
-                    log(`🔐 Test autenticación: ${JSON.stringify(resultado)}`, resultado.success ? 'success' : 'error');
-                } catch (error) {
-                    log(`❌ Error en autenticarUsuario(): ${error.message}`, 'error');
-                }
-            }
-        }
-
-        function sincronizarUsuarios() {
-            log('🔄 Sincronizando usuarios entre dispositivos...', 'info');
-            
-            // Forzar recreación del usuario administrador
             try {
-                let usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
+                // Intentar obtener cliente existente
+                if (!supabaseClient) {
+                    if (window.supabaseConfig) {
+                        addDebugLog('🔧 Intentando obtener cliente desde supabaseConfig...', 'info');
+                        supabaseClient = window.supabaseConfig.getClient();
+                    }
+                    
+                    if (!supabaseClient) {
+                        addDebugLog('🔧 Inicializando cliente directamente...', 'info');
+                        supabaseClient = initializeSupabaseDirect();
+                    }
+                }
                 
-                // Buscar admin existente
-                const adminIndex = usuarios.findIndex(u => u.email === 'maurochica23@gmail.com');
+                if (!supabaseClient) {
+                    addDebugLog('❌ No se pudo inicializar el cliente Supabase', 'error');
+                    return false;
+                }
                 
-                // Definir usuario admin estándar
-                const usuarioAdminEstandar = {
-                    id: 'admin_real_001',
+                addDebugLog('✅ Cliente Supabase disponible', 'success');
+                
+                // Hacer una consulta de prueba simple
+                addDebugLog('🧪 Probando consulta de prueba...', 'info');
+                
+                const { data, error } = await supabaseClient
+                    .from('usuarios')
+                    .select('count')
+                    .limit(1);
+                    
+                if (error) {
+                    addDebugLog(`❌ Error de conexión: ${error.message}`, 'error');
+                    addDebugLog(`🔍 Código: ${error.code}`, 'error');
+                    
+                    // Si es error de tabla no existe, intentar crear esquema
+                    if (error.code === 'PGRST116' || error.message.includes('does not exist')) {
+                        addDebugLog('⚠️ Tabla usuarios no existe', 'warning');
+                        addDebugLog('💡 Necesitas configurar el esquema de base de datos', 'warning');
+                    }
+                    
+                    return false;
+                } else {
+                    addDebugLog('✅ Conexión a base de datos exitosa', 'success');
+                    return true;
+                }
+                
+            } catch (error) {
+                addDebugLog(`❌ Error inesperado: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        // Buscar usuario en la base de datos
+        async function buscarUsuario() {
+            addDebugLog('🔍 Buscando usuario en la base de datos...', 'info');
+            addDebugLog(`📧 Email: ${DEBUG_CREDENTIALS.email}`, 'info');
+            
+            try {
+                if (!supabaseClient) {
+                    addDebugLog('❌ Cliente Supabase no disponible', 'error');
+                    addDebugLog('💡 Ejecuta "Verificar Conexión" primero', 'warning');
+                    return;
+                }
+                
+                // Buscar usuario por email
+                const { data: usuarios, error } = await supabaseClient
+                    .from('usuarios')
+                    .select('*')
+                    .eq('email', DEBUG_CREDENTIALS.email);
+                    
+                if (error) {
+                    addDebugLog(`❌ Error buscando usuario: ${error.message}`, 'error');
+                    
+                    if (error.code === 'PGRST116') {
+                        addDebugLog('💡 La tabla usuarios no existe en Supabase', 'warning');
+                        addDebugLog('🛠️ Necesitas crear el esquema de base de datos', 'warning');
+                    }
+                    return;
+                }
+                
+                addDebugLog(`📊 Usuarios encontrados: ${usuarios.length}`, 'info');
+                
+                if (usuarios.length === 0) {
+                    addDebugLog('❌ Usuario NO encontrado en la base de datos', 'error');
+                    addDebugLog('💡 Necesitas crear el usuario primero', 'warning');
+                } else {
+                    const usuario = usuarios[0];
+                    addDebugLog('✅ Usuario encontrado:', 'success');
+                    addDebugLog(`   ID: ${usuario.id}`, 'info');
+                    addDebugLog(`   Nombre: ${usuario.nombre}`, 'info');
+                    addDebugLog(`   Email: ${usuario.email}`, 'info');
+                    addDebugLog(`   Rol: ${usuario.rol}`, 'info');
+                    addDebugLog(`   Estado: ${usuario.estado}`, 'info');
+                    addDebugLog(`   Password Hash: ${usuario.password_hash ? 'SÍ' : 'NO'}`, usuario.password_hash ? 'success' : 'error');
+                    
+                    if (usuario.estado !== 'activo') {
+                        addDebugLog('⚠️ El usuario no está activo', 'warning');
+                    }
+                }
+                
+            } catch (error) {
+                addDebugLog(`❌ Error inesperado: ${error.message}`, 'error');
+            }
+        }
+        
+        // Crear esquema básico de base de datos
+        async function crearEsquema() {
+            addDebugLog('🏗️ Creando esquema básico de base de datos...', 'info');
+            
+            try {
+                if (!supabaseClient) {
+                    addDebugLog('❌ Cliente Supabase no disponible', 'error');
+                    return;
+                }
+                
+                // Intentar crear tabla usuarios básica
+                addDebugLog('📋 Creando tabla usuarios...', 'info');
+                
+                const createTableSQL = `
+                    CREATE TABLE IF NOT EXISTS usuarios (
+                        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                        nombre TEXT NOT NULL,
+                        email TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        rol TEXT DEFAULT 'usuario',
+                        estado TEXT DEFAULT 'activo',
+                        fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        ultimo_acceso TIMESTAMP WITH TIME ZONE,
+                        permisos JSONB DEFAULT '{}'::jsonb
+                    );
+                `;
+                
+                const { data, error } = await supabaseClient.rpc('exec_sql', { sql: createTableSQL });
+                
+                if (error) {
+                    addDebugLog(`❌ Error creando esquema: ${error.message}`, 'error');
+                    addDebugLog('💡 Necesitas permisos de administrador en Supabase', 'warning');
+                } else {
+                    addDebugLog('✅ Esquema creado exitosamente', 'success');
+                }
+                
+            } catch (error) {
+                addDebugLog(`❌ Error creando esquema: ${error.message}`, 'error');
+                addDebugLog('💡 Configura el esquema manualmente en Supabase', 'warning');
+            }
+        }
+        
+        // Crear usuario administrador usando SQL directo
+        async function crearUsuario() {
+            addDebugLog('👤 Creando usuario administrador...', 'info');
+            
+            try {
+                if (!supabaseClient) {
+                    addDebugLog('❌ Cliente Supabase no disponible', 'error');
+                    return;
+                }
+                
+                // Verificar si ya existe
+                const { data: existente } = await supabaseClient
+                    .from('usuarios')
+                    .select('id')
+                    .eq('email', DEBUG_CREDENTIALS.email)
+                    .single();
+                    
+                if (existente) {
+                    addDebugLog('⚠️ El usuario ya existe', 'warning');
+                    return;
+                }
+                
+                // Crear usuario con hash simple (para testing)
+                addDebugLog('🔐 Creando usuario con hash de contraseña...', 'info');
+                
+                // Hash simple usando btoa (solo para desarrollo)
+                const simpleHash = btoa(DEBUG_CREDENTIALS.password);
+                
+                const nuevoUsuario = {
                     nombre: 'Mauro Chica',
-                    email: 'maurochica23@gmail.com',
-                    password: 'kennia23',
+                    email: DEBUG_CREDENTIALS.email,
+                    password_hash: simpleHash,
                     rol: 'administrador',
                     estado: 'activo',
-                    fechaCreacion: new Date().toISOString(),
-                    ultimaModificacion: new Date().toISOString(),
-                    ultimoAcceso: null,
+                    fecha_creacion: new Date().toISOString(),
                     permisos: {
                         dashboard: true,
                         salas: true,
@@ -282,191 +394,95 @@
                     }
                 };
                 
-                if (adminIndex !== -1) {
-                    log('📝 Actualizando usuario administrador existente...', 'info');
-                    usuarios[adminIndex] = usuarioAdminEstandar;
-                } else {
-                    log('➕ Creando nuevo usuario administrador...', 'info');
-                    usuarios.push(usuarioAdminEstandar);
+                const { data: usuarioCreado, error: createError } = await supabaseClient
+                    .from('usuarios')
+                    .insert(nuevoUsuario)
+                    .select()
+                    .single();
+                    
+                if (createError) {
+                    addDebugLog(`❌ Error creando usuario: ${createError.message}`, 'error');
+                    return;
                 }
                 
-                // Guardar usuarios sincronizados
-                localStorage.setItem('usuarios', JSON.stringify(usuarios));
-                log('✅ Usuarios sincronizados exitosamente', 'success');
-                
-                // Verificar resultado
-                setTimeout(() => {
-                    analizarUsuarios();
-                }, 500);
+                addDebugLog('🎉 Usuario administrador creado exitosamente!', 'success');
+                addDebugLog(`   ID: ${usuarioCreado.id}`, 'info');
+                addDebugLog(`   Email: ${usuarioCreado.email}`, 'info');
+                addDebugLog('💡 Ahora puedes intentar hacer login', 'info');
                 
             } catch (error) {
-                log(`❌ Error sincronizando usuarios: ${error.message}`, 'error');
+                addDebugLog(`❌ Error inesperado: ${error.message}`, 'error');
             }
         }
-
-        function repararAutenticacion() {
-            log('🔧 Reparando sistema de autenticación...', 'info');
-            
-            // Paso 1: Limpiar datos corruptos
-            log('🧹 Limpiando datos potencialmente corruptos...', 'info');
-            const keysToClean = ['sesionActual', 'salas_current_session', 'bienvenidaMostrada'];
-            keysToClean.forEach(key => {
-                localStorage.removeItem(key);
-                sessionStorage.removeItem(key);
-            });
-            
-            // Paso 2: Sincronizar usuarios
-            sincronizarUsuarios();
-            
-            // Paso 3: Verificar localStorage
-            setTimeout(() => {
-                log('🔍 Verificando integridad del localStorage...', 'info');
-                try {
-                    const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-                    const admin = usuarios.find(u => u.email === 'maurochica23@gmail.com');
-                    
-                    if (admin && admin.password === 'kennia23') {
-                        log('✅ Reparación completada exitosamente', 'success');
-                        log('🎯 Sistema listo para autenticación en todas las plataformas', 'success');
-                    } else {
-                        log('❌ La reparación no se completó correctamente', 'error');
-                    }
-                } catch (error) {
-                    log(`❌ Error verificando reparación: ${error.message}`, 'error');
-                }
-            }, 1000);
-        }
-
-        function testLogin() {
-            const email = document.getElementById('testEmail').value;
-            const password = document.getElementById('testPassword').value;
-            const resultDiv = document.getElementById('loginResult');
-            
-            log(`🧪 Probando login con: ${email} / ${password}`, 'info');
+        
+        // Probar login completo con hash simple
+        async function probarLogin() {
+            addDebugLog('🔐 Probando login completo...', 'info');
             
             try {
-                // Test usando función global si está disponible
-                if (typeof window.autenticarUsuario === 'function') {
-                    const resultado = window.autenticarUsuario(email, password);
-                    log(`📋 Resultado autenticación: ${JSON.stringify(resultado)}`, resultado.success ? 'success' : 'error');
-                    
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-${resultado.success ? 'success' : 'danger'}">
-                            <strong>${resultado.success ? 'Éxito' : 'Error'}:</strong> 
-                            ${resultado.success ? 'Login correcto' : resultado.mensaje}
-                        </div>
-                    `;
-                } else {
-                    // Test manual
-                    const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-                    const usuario = usuarios.find(u => 
-                        u.email.toLowerCase() === email.toLowerCase() && 
-                        String(u.password).trim() === String(password).trim() && 
-                        u.estado === 'activo'
-                    );
-                    
-                    const exito = !!usuario;
-                    log(`🔧 Test manual: ${exito ? 'ÉXITO' : 'FALLO'}`, exito ? 'success' : 'error');
-                    
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-${exito ? 'success' : 'danger'}">
-                            <strong>${exito ? 'Éxito' : 'Error'}:</strong> 
-                            ${exito ? 'Credenciales válidas' : 'Credenciales incorrectas'}
-                        </div>
-                    `;
+                if (!supabaseClient) {
+                    addDebugLog('❌ Cliente Supabase no disponible', 'error');
+                    return;
                 }
+                
+                // Buscar usuario
+                const { data: usuarios, error: userError } = await supabaseClient
+                    .from('usuarios')
+                    .select('*')
+                    .eq('email', DEBUG_CREDENTIALS.email)
+                    .eq('estado', 'activo');
+                    
+                if (userError) {
+                    addDebugLog(`❌ Error buscando usuario: ${userError.message}`, 'error');
+                    return;
+                }
+                
+                if (!usuarios || usuarios.length === 0) {
+                    addDebugLog('❌ Usuario no encontrado o inactivo', 'error');
+                    return;
+                }
+                
+                const usuario = usuarios[0];
+                addDebugLog('✅ Usuario encontrado', 'success');
+                
+                // Verificar contraseña con hash simple
+                addDebugLog('🔐 Verificando contraseña...', 'info');
+                
+                const hashEsperado = btoa(DEBUG_CREDENTIALS.password);
+                const passwordValid = usuario.password_hash === hashEsperado;
+                
+                if (!passwordValid) {
+                    addDebugLog('❌ Contraseña incorrecta', 'error');
+                    addDebugLog(`   Hash esperado: ${hashEsperado}`, 'info');
+                    addDebugLog(`   Hash en DB: ${usuario.password_hash}`, 'info');
+                    return;
+                }
+                
+                addDebugLog('✅ Contraseña verificada correctamente', 'success');
+                
+                addDebugLog('🎉 LOGIN FUNCIONANDO CORRECTAMENTE', 'success');
+                addDebugLog('✅ Puedes usar estas credenciales para acceder', 'success');
+                
+                // Actualizar archivo de login para usar hash simple
+                addDebugLog('💡 Sugerencia: Actualizar sistema para usar hash simple', 'warning');
+                
             } catch (error) {
-                log(`❌ Error en test de login: ${error.message}`, 'error');
-                resultDiv.innerHTML = `
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> ${error.message}
-                    </div>
-                `;
+                addDebugLog(`❌ Error inesperado: ${error.message}`, 'error');
             }
         }
-
-        function exportarDatos() {
-            log('📤 Exportando datos del sistema...', 'info');
+        
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', () => {
+            addDebugLog('🚀 Sistema de debug cargado', 'success');
+            addDebugLog('💡 Comienza verificando la conexión', 'info');
+            addDebugLog('🔧 Verificando librería Supabase...', 'info');
             
-            const datos = {
-                dispositivo: detectDevice(),
-                timestamp: new Date().toISOString(),
-                usuarios: JSON.parse(localStorage.getItem('usuarios') || '[]'),
-                sesion: localStorage.getItem('sesionActual'),
-                configuracion: Object.keys(localStorage).filter(key => key.includes('gamecontrol')).reduce((obj, key) => {
-                    obj[key] = localStorage.getItem(key);
-                    return obj;
-                }, {})
-            };
-            
-            const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `gamecontrol-debug-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            
-            log('✅ Datos exportados exitosamente', 'success');
-        }
-
-        function limpiarTodo() {
-            if (confirm('⚠️ ¿Estás seguro de que quieres limpiar TODOS los datos? Esta acción no se puede deshacer.')) {
-                log('🗑️ Limpiando todos los datos...', 'warning');
-                
-                // Limpiar localStorage y sessionStorage
-                Object.keys(localStorage).forEach(key => {
-                    if (key.includes('gamecontrol') || ['usuarios', 'sesionActual', 'salas'].some(prefix => key.includes(prefix))) {
-                        localStorage.removeItem(key);
-                    }
-                });
-                
-                Object.keys(sessionStorage).forEach(key => {
-                    sessionStorage.removeItem(key);
-                });
-                
-                log('✅ Datos limpiados. Recarga la página para empezar de cero.', 'success');
+            if (typeof createClient !== 'undefined') {
+                addDebugLog('✅ Librería Supabase cargada correctamente', 'success');
+            } else {
+                addDebugLog('❌ Librería Supabase no encontrada', 'error');
+                addDebugLog('💡 Verifica la conexión a internet', 'warning');
             }
-        }
-
-        // === INICIALIZACIÓN ===
-        document.addEventListener('DOMContentLoaded', function() {
-            const device = detectDevice();
-            const timestamp = new Date().toLocaleString();
-            
-            // Mostrar información del dispositivo
-            document.getElementById('deviceType').textContent = device.isMobile ? 'Móvil' : 'Desktop';
-            document.getElementById('timestamp').textContent = timestamp;
-            document.getElementById('currentUrl').textContent = window.location.href;
-            
-            // Información detallada del dispositivo
-            document.getElementById('deviceInfo').innerHTML = `
-                Tipo: ${device.isMobile ? 'Móvil' : device.isTablet ? 'Tablet' : 'Desktop'}<br>
-                Táctil: ${device.isTouch ? 'Sí' : 'No'}<br>
-                Plataforma: ${device.platform}<br>
-                Idioma: ${device.language}<br>
-                Cookies: ${device.cookieEnabled ? 'Habilitadas' : 'Deshabilitadas'}<br>
-                Online: ${device.onLine ? 'Sí' : 'No'}<br>
-                User Agent: ${device.userAgent.substring(0, 100)}...
-            `;
-            
-            // Información del localStorage
-            const storageSize = new Blob(Object.values(localStorage)).size;
-            const usuariosCount = JSON.parse(localStorage.getItem('usuarios') || '[]').length;
-            
-            document.getElementById('storageInfo').innerHTML = `
-                Tamaño localStorage: ${(storageSize / 1024).toFixed(2)} KB<br>
-                Usuarios almacenados: ${usuariosCount}<br>
-                Sesión activa: ${localStorage.getItem('sesionActual') ? 'Sí' : 'No'}<br>
-                Claves totales: ${Object.keys(localStorage).length}<br>
-                Última modificación: ${localStorage.getItem('usuarios') ? 'Datos presentes' : 'Sin datos'}
-            `;
-            
-            log('🚀 Sistema de debug inicializado', 'success');
-            log(`📱 Dispositivo detectado: ${device.isMobile ? 'Móvil' : 'Desktop'}`, 'info');
-            
-            // Auto-analizar usuarios al cargar
-            setTimeout(analizarUsuarios, 1000);
         });
     </script>
 </body>
