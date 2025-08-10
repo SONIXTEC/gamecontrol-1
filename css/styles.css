@@ -465,7 +465,7 @@ body {
         box-shadow: 5px 0 25px rgba(0, 0, 0, 0.4);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-        display: none; /* Oculto por defecto en móvil para evitar doble menú */
+        display: none; /* Oculto por defecto; se muestra con .show */
     }
     
     .sidebar.show {

@@ -404,11 +404,11 @@ function mostrarErrorConexion() {
 // ===================================================================
 
 function inicializarMenuMovil() {
-    const toggleButton = document.querySelector('.navbar-toggler, .menu-toggle, #menuToggle');
+    const toggleButtons = Array.from(document.querySelectorAll('.navbar-toggler, .menu-toggle, #menuToggle'));
     const sidebar = document.querySelector('.sidebar');
     let overlay = document.querySelector('#sidebarOverlay');
 
-    if (!toggleButton || !sidebar) return;
+    if (toggleButtons.length === 0 || !sidebar) return;
 
     // Usar overlay existente o crearlo si no existe
     if (!overlay) {
@@ -421,22 +421,26 @@ function inicializarMenuMovil() {
     function abrirMenu() {
         sidebar.classList.add('show');
         overlay.classList.add('show');
-        document.body.style.overflow = 'hidden';
+        document.body.classList.add('menu-open');
+        toggleButtons.forEach(btn => btn.setAttribute('aria-expanded', 'true'));
     }
 
     function cerrarMenu() {
         sidebar.classList.remove('show');
         overlay.classList.remove('show');
-        document.body.style.overflow = '';
+        document.body.classList.remove('menu-open');
+        toggleButtons.forEach(btn => btn.setAttribute('aria-expanded', 'false'));
     }
 
-    toggleButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (sidebar.classList.contains('show')) {
-            cerrarMenu();
-        } else {
-            abrirMenu();
-        }
+    toggleButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (sidebar.classList.contains('show')) {
+                cerrarMenu();
+            } else {
+                abrirMenu();
+            }
+        });
     });
 
     overlay.addEventListener('click', cerrarMenu);
