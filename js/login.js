@@ -446,7 +446,7 @@ function reiniciarDatos() {
 function depurarEstado() {
     console.log('🔍 Estado del sistema:');
     console.log('- Modo: Solo Supabase (Online)');
-    console.log('- Cliente Supabase:', !!window.supabaseConfig?.getClient());
+    console.log('- Cliente Supabase:', !!window.supabaseConfig?.getSupabaseClient);
     console.log('- Database Service:', !!window.databaseService);
     console.log('- Session Manager:', !!window.sessionManager);
     

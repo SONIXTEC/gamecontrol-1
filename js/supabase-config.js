@@ -359,6 +359,7 @@ window.supabaseConfig = {
     getSupabaseClient,
     getSupabaseClientSync,
     verificarConexion,
+    verificarEstadoConexion,
     handleSupabaseError,
     handleSupabaseSuccess,
     configurarModo,

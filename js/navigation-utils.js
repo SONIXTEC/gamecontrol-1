@@ -185,8 +185,8 @@ class NavigationUtils {
         // Solo verificar Supabase si no hay sesión en localStorage
         if (!hasSession) {
             try {
-                if (window.supabaseConfig && typeof window.supabaseConfig.getClient === 'function') {
-                    const client = window.supabaseConfig.getClient();
+                if (window.supabaseConfig && typeof window.supabaseConfig.getSupabaseClient === 'function') {
+                    const client = await window.supabaseConfig.getSupabaseClient();
                     if (client && client.auth && typeof client.auth.getSession === 'function') {
                         const { data } = await client.auth.getSession();
                         const supabaseSession = data && data.session ? data.session : null;

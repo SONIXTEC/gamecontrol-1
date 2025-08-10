@@ -25,7 +25,7 @@ class SupabaseAuthSystem {
     async init() {
         try {
             // Obtener cliente de Supabase
-            this.client = window.supabaseConfig?.getClient();
+            this.client = await window.supabaseConfig?.getSupabaseClient();
             
             if (!this.client) {
                 throw new Error('Cliente Supabase no disponible');
@@ -623,7 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const initAuth = () => {
             attempts++;
             
-            if (window.supabaseConfig && window.supabaseConfig.getClient()) {
+            if (window.supabaseConfig && window.supabaseConfig.getSupabaseClient) {
                 console.log('✅ Supabase config disponible, creando sessionManager...');
                 sessionManager = new SupabaseAuthSystem();
                 window.sessionManager = sessionManager; // Para acceso global
