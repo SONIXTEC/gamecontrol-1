@@ -479,6 +479,26 @@ body {
         transition: margin-left 0.3s ease;
     }
 
+    /* KPIs compactos en móvil */
+    .kpi-row {
+        display: flex;
+        flex-wrap: wrap;
+        margin-left: -6px;
+        margin-right: -6px;
+    }
+    .kpi-row > [class^="col-"],
+    .kpi-row > [class*=" col-"] {
+        flex: 0 0 50%;
+        max-width: 50%;
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+    .kpi-row .dashboard-card { padding: 0.75rem; }
+    .kpi-row .card-icon { width: 36px; height: 36px; margin-bottom: 0.4rem; }
+    .kpi-row h6 { font-size: 0.85rem; margin-bottom: 0.2rem; }
+    .kpi-row h3 { font-size: 1.1rem; margin: 0; }
+    .kpi-row p.small { font-size: 0.7rem; margin-top: 0.2rem; }
+
     /* Overlay cuando el menú está abierto - MEJORADO */
     .sidebar-overlay {
         position: fixed;
