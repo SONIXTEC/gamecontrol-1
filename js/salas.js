@@ -325,6 +325,9 @@ class GestorSalas {
                         </div>
                     </div>
                     <div class="sala-actions-minimal">
+                        <button class="btn btn-outline-primary me-2" onclick="window.gestorSalas.mostrarModalEditarSala('${sala.id}')" title="Editar sala">
+                            <i class="fas fa-edit"></i>
+                        </button>
                         <button class="btn btn-outline-danger" onclick="window.gestorSalas.eliminarSala('${sala.id}')" title="Eliminar sala">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -504,8 +507,7 @@ class GestorSalas {
         
         if (tbody) {
             tbody.innerHTML = sesionesActivas.map(sesion => {
-                const sala = this.salas.find(s => s.id === sesion.salaId);
-                if (!sala) return '';
+                const sala = this.salas.find(s => s.id === sesion.salaId) || { nombre: 'Sala desconocida', tipo: 'pc' };
                 
                 const inicio = new Date(sesion.fecha_inicio);
                 const duracionMs = Date.now() - inicio.getTime();
@@ -1301,6 +1303,18 @@ class GestorSalas {
                         }
                     }
                 }
+            });
+        }
+
+        // Manejar formulario de edición de sala
+        const formEditarSala = document.getElementById('formEditarSala');
+        if (formEditarSala) {
+            formEditarSala.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                await this.guardarEdicionSala(formData);
+            });
+        }
                 
                 // Cerrar modal de manera segura
                 const modalElement = document.getElementById('modalTarifas');
@@ -3408,6 +3422,89 @@ class GestorSalas {
         window.dispatchEvent(new CustomEvent('sesionIniciada', {
             detail: { sesion: nuevaSesion }
         }));
+    }
+
+    // Método para mostrar el modal de edición
+    mostrarModalEditarSala(salaId) {
+        const sala = this.salas.find(s => s.id === salaId);
+        if (!sala) {
+            mostrarNotificacion('Sala no encontrada', 'error');
+            return;
+        }
+
+        // Llenar el formulario con los datos actuales
+        document.getElementById('editarSalaId').value = sala.id;
+        document.getElementById('editarNombre').value = sala.nombre;
+        document.getElementById('editarTipo').value = sala.tipo;
+        document.getElementById('editarNumEstaciones').value = sala.numEstaciones;
+        document.getElementById('editarPrefijo').value = sala.prefijo;
+        document.getElementById('editarTarifa').value = sala.tarifa;
+
+        // Mostrar el modal
+        const modal = new bootstrap.Modal(document.getElementById('modalEditarSala'));
+        modal.show();
+    }
+
+    // Método para guardar la edición de la sala
+    async guardarEdicionSala(formData) {
+        try {
+            const salaId = formData.get('salaId');
+            const sala = this.salas.find(s => s.id === salaId);
+            
+            if (!sala) {
+                mostrarNotificacion('Sala no encontrada', 'error');
+                return false;
+            }
+
+            // Actualizar datos de la sala
+            sala.nombre = formData.get('nombre');
+            sala.tipo = formData.get('tipo');
+            sala.numEstaciones = parseInt(formData.get('numEstaciones'));
+            sala.prefijo = formData.get('prefijo');
+            sala.tarifa = parseFloat(formData.get('tarifa'));
+
+            // Guardar en Supabase si está disponible
+            if (window.databaseService) {
+                const datosActualizados = {
+                    nombre: sala.nombre,
+                    tipo: sala.tipo,
+                    num_estaciones: sala.numEstaciones,
+                    equipamiento: {
+                        tipo_consola: sala.tipo,
+                        prefijo: sala.prefijo
+                    },
+                    tarifas: {
+                        base: sala.tarifa
+                    }
+                };
+
+                const resultado = await window.databaseService.update('salas', salaId, datosActualizados);
+                if (!resultado.success) {
+                    console.warn('No se pudo actualizar en Supabase:', resultado.error);
+                    // Continuar con localStorage como fallback
+                }
+            }
+
+            // Guardar en localStorage
+            await guardarSalas(this.salas);
+
+            // Cerrar el modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalEditarSala'));
+            modal.hide();
+
+            // Actualizar la vista
+            this.actualizarSalas();
+            this.actualizarSesiones();
+            this.actualizarEstadisticas();
+
+            mostrarNotificacion('Sala actualizada correctamente', 'success');
+            return true;
+
+        } catch (error) {
+            console.error('Error guardando edición de sala:', error);
+            mostrarNotificacion('Error al guardar los cambios', 'error');
+            return false;
+        }
     }
 }
 

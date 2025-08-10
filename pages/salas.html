@@ -409,6 +409,62 @@
     <script src="../js/theme-ux.js"></script>
     <script src="../js/salas.js"></script>
     
+    <!-- Modal Editar Sala -->
+    <div class="modal fade" id="modalEditarSala" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Editar Sala</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formEditarSala">
+                    <div class="modal-body">
+                        <input type="hidden" id="editarSalaId" name="salaId">
+                        
+                        <div class="mb-3">
+                            <label for="editarNombre" class="form-label">Nombre de la Sala</label>
+                            <input type="text" class="form-control" id="editarNombre" name="nombre" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editarTipo" class="form-label">Tipo de Consola</label>
+                            <select class="form-select" id="editarTipo" name="tipo" required>
+                                <option value="playstation">PlayStation</option>
+                                <option value="xbox">Xbox</option>
+                                <option value="pc">PC Gaming</option>
+                                <option value="nintendo">Nintendo</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editarNumEstaciones" class="form-label">Número de Estaciones</label>
+                            <input type="number" class="form-control" id="editarNumEstaciones" name="numEstaciones" min="1" max="20" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editarPrefijo" class="form-label">Prefijo de Estaciones</label>
+                            <input type="text" class="form-control" id="editarPrefijo" name="prefijo" placeholder="Ej: EST" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editarTarifa" class="form-label">Tarifa Base por Hora</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="editarTarifa" name="tarifa" min="0" step="0.50" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== VERIFICACIÓN DE AUTENTICACIÓN FINAL ===== -->
     <script>
         // Verificación final que usa navigation-utils
