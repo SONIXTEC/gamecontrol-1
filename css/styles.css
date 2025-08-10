@@ -499,6 +499,19 @@ body {
     .kpi-row h3 { font-size: 1.1rem; margin: 0; }
     .kpi-row p.small { font-size: 0.7rem; margin-top: 0.2rem; }
 
+    /* Compactar tarjetas y tablas en páginas internas */
+    .module-container { padding: 1rem; }
+    .module-container h5 { margin-bottom: 0.75rem; }
+    .table th, .table td { padding: 0.5rem; }
+
+    /* Badges compactos (disponible/en uso/sesiones activas) */
+    .badge { font-size: 0.75rem; padding: 0.3rem 0.5rem; }
+    .badge i { margin-right: 0.25rem; }
+
+    /* Botones de duración compactos */
+    .duracion-botones { gap: 0.4rem; }
+    .duracion-botones .btn { padding: 0.5rem 0; font-size: 0.9rem; }
+
     /* Overlay cuando el menú está abierto - MEJORADO */
     .sidebar-overlay {
         position: fixed;
