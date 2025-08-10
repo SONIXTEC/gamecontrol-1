@@ -469,7 +469,7 @@ body {
     }
     
     .sidebar.show {
-        transform: translateX(0);
+        transform: translateX(0) !important;
         display: block !important; /* Forzar visible al abrir incluso si hay utilidades Bootstrap */
     }
     

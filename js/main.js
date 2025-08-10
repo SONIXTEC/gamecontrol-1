@@ -432,7 +432,10 @@ function inicializarMenuMovil() {
         toggleButtons.forEach(btn => btn.setAttribute('aria-expanded', 'false'));
     }
 
+    // Evitar multiple binding
+    const clickNs = 'menuToggleHandler';
     toggleButtons.forEach(btn => {
+        if (btn[clickNs]) return;
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             if (sidebar.classList.contains('show')) {
@@ -441,6 +444,7 @@ function inicializarMenuMovil() {
                 abrirMenu();
             }
         });
+        btn[clickNs] = true;
     });
 
     overlay.addEventListener('click', cerrarMenu);
