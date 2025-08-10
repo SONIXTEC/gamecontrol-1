@@ -70,17 +70,28 @@ function mostrarNotificacion(mensaje, tipo = 'info') {
 }
 async function obtenerSalas() {
     try {
+        console.log('🔍 DEBUG obtenerSalas() iniciando...');
+        
         if (window.databaseService) {
+            console.log('  - Usando databaseService...');
             const resultado = await window.databaseService.select('salas', {
                 ordenPor: { campo: 'nombre', direccion: 'asc' }
             });
-            if (!resultado.success) return [];
+            console.log('  - Resultado databaseService:', resultado);
+            
+            if (!resultado.success) {
+                console.warn('  - databaseService no exitoso, retornando array vacío');
+                return [];
+            }
+            
             const filas = Array.isArray(resultado.data) ? resultado.data : [];
+            console.log('  - Filas obtenidas:', filas);
+            
             // Mapear columnas de BD -> formato de UI
-            return filas.map((row) => {
+            const salasMapeadas = filas.map((row) => {
                 const equipamiento = row.equipamiento || {};
                 const tarifas = row.tarifas || {};
-                return {
+                const sala = {
                     id: row.id,
                     nombre: row.nombre,
                     // Guardamos el tipo de consola en equipamiento.tipo_consola; si no existe, inferimos o usamos 'pc'
@@ -90,14 +101,21 @@ async function obtenerSalas() {
                     tarifa: tarifas.base || 0,
                     activo: (typeof row.activa === 'boolean') ? row.activa : true
                 };
+                console.log('  - Sala mapeada:', sala);
+                return sala;
             });
+            
+            console.log('  - Salas mapeadas:', salasMapeadas);
+            return salasMapeadas;
         }
         
         // Fallback a localStorage
+        console.log('  - Usando localStorage fallback...');
         const salas = JSON.parse(localStorage.getItem('salas') || '[]');
+        console.log('  - Salas desde localStorage:', salas);
         return Array.isArray(salas) ? salas : [];
     } catch (error) {
-        console.warn('Error al obtener salas:', error);
+        console.error('❌ Error al obtener salas:', error);
         return [];
     }
 }
@@ -266,11 +284,19 @@ class GestorSalas {
     }
     
     actualizarSalas() {
+        console.log('🔍 DEBUG actualizarSalas() iniciando...');
+        console.log('  - this.salas:', this.salas);
+        console.log('  - this.contenedorSalas:', this.contenedorSalas);
+        
         const filtroTipo = document.querySelector('input[name="tipoSala"]:checked');
         const tipoSeleccionado = filtroTipo ? filtroTipo.value : 'todas';
         const busqueda = this.busqueda ? this.busqueda.value.toLowerCase() : '';
         
         let salasFiltradas = this.salas;
+        
+        console.log('  - Filtros aplicados:');
+        console.log('    - tipoSeleccionado:', tipoSeleccionado);
+        console.log('    - busqueda:', busqueda);
         
         // Aplicar filtro por tipo
         if (tipoSeleccionado !== 'todas') {
@@ -285,12 +311,19 @@ class GestorSalas {
             );
         }
         
+        console.log('  - salasFiltradas:', salasFiltradas);
+        
         // Actualizar contenedor
         if (this.contenedorSalas) {
+            console.log('  - Actualizando contenedor con', salasFiltradas.length, 'salas');
             this.contenedorSalas.innerHTML = salasFiltradas.length > 0 
                 ? salasFiltradas.map(sala => this.crearHTMLSala(sala)).join('')
                 : '<div class="alert alert-info text-center"><i class="fas fa-info-circle me-2"></i>No se encontraron salas</div>';
+        } else {
+            console.error('❌ this.contenedorSalas no está disponible');
         }
+        
+        console.log('✅ actualizarSalas() completado');
     }
     
     crearHTMLSala(sala) {
