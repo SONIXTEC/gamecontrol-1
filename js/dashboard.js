@@ -43,6 +43,7 @@ class DashboardManager {
             await this.verificarConexion();
             await this.cargarDatos();
             this.configurarEventListeners();
+            this.configurarRealtime();
             this.inicializarGraficos();
             await this.actualizarMetricas();
             this.iniciarActualizacionAutomatica();
@@ -189,10 +190,6 @@ class DashboardManager {
             if (!this.datos.salas || this.datos.salas.length === 0) {
                 const locales = this.getSalasLocales();
                 if (locales.length > 0) this.datos.salas = locales;
-            }
-            if (!this.datos.sesiones || this.datos.sesiones.length === 0) {
-                const locales = this.getSesionesLocales();
-                if (locales.length > 0) this.datos.sesiones = locales;
             }
             if (!this.datos.gastos || this.datos.gastos.length === 0) {
                 const locales = this.getGastosLocales();
@@ -410,7 +407,7 @@ class DashboardManager {
             if (!tablaSesionesActivas || !totalSesionesActivas) return;
 
             // Filtrar sesiones activas (no finalizadas)
-            const sesionesActivas = this.datos.sesiones.filter(s => !s.fecha_fin);
+            const sesionesActivas = this.datos.sesiones.filter(s => !s.finalizada && !s.fecha_fin);
             const salasMap = new Map(this.datos.salas.map(s => [s.id, s]));
 
             totalSesionesActivas.textContent = sesionesActivas.length;
@@ -1215,6 +1212,28 @@ class DashboardManager {
         }, 30000);
         
         this.intervalos.push(intervalo);
+    }
+
+    // ===== REALTIME SUPABASE =====
+    async configurarRealtime() {
+        try {
+            if (this._rt) return;
+            if (!window.supabaseConfig || !window.supabaseConfig.getSupabaseClient) return;
+            const client = await window.supabaseConfig.getSupabaseClient();
+            if (!client || !client.channel) return;
+            this._rt = client
+                .channel('dashboard-sesiones-rt')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'sesiones' }, async () => {
+                    try {
+                        await this.cargarDatos();
+                        await this.actualizarMetricas();
+                    } catch (_) {}
+                })
+                .subscribe();
+            console.log('✅ Realtime de sesiones configurado en dashboard');
+        } catch (err) {
+            console.warn('⚠️ No se pudo configurar realtime en dashboard:', err?.message || err);
+        }
     }
 
     destruir() {
