@@ -431,24 +431,35 @@ function inicializarMenuMovil() {
         sidebar.classList.remove('show');
         if (overlay) overlay.classList.remove('show');
         document.body.classList.remove('menu-open');
-        toggleButtons.forEach(btn => btn.setAttribute('aria-expanded', 'false'));
+        toggleButtons.forEach(btn => {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.classList.remove('active');
+        });
     }
 
-    // Evitar multiple binding
-    const clickNs = 'menuToggleHandler';
+    // Evitar doble disparo (touch + click)
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const handlerNs = 'menuToggleHandler';
     toggleButtons.forEach(btn => {
-        if (btn[clickNs]) return;
+        if (btn[handlerNs]) return;
         const handler = (e) => {
-            e.preventDefault();
-            if (sidebar.classList.contains('show')) {
+            // En listeners touch/click no pasivos para poder preventDefault cuando sea necesario
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const isOpen = sidebar.classList.contains('show');
+            if (isOpen) {
                 cerrarMenu();
+                btn.classList.remove('active');
             } else {
                 abrirMenu();
+                btn.classList.add('active');
             }
         };
-        btn.addEventListener('click', handler, { passive: true });
-        btn.addEventListener('touchstart', handler, { passive: true });
-        btn[clickNs] = true;
+        if (isTouch) {
+            btn.addEventListener('touchend', handler, { passive: false });
+        } else {
+            btn.addEventListener('click', handler, false);
+        }
+        btn[handlerNs] = true;
     });
 
     if (overlay) {

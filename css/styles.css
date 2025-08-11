@@ -526,6 +526,8 @@ body {
         visibility: hidden;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+        user-select: none;
     }
 
     .sidebar-overlay.show {
@@ -2866,6 +2868,7 @@ body {
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
+        user-select: none;
     }
 
     .menu-toggle:hover {
