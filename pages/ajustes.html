@@ -404,5 +404,43 @@
     <!-- Custom JS -->
     <script src="../js/auth.js"></script>
     <script src="../js/ajustes.js"></script>
+    <script>
+        // Resetear sistema: elimina datos locales y en Supabase
+        document.addEventListener('DOMContentLoaded', () => {
+            const btn = document.querySelector('.btn-resetear-sistema');
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                if (!confirm('⚠️ Esto eliminará TODOS los datos y devolverá el sistema al estado inicial.\n\n¿Deseas continuar?')) return;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Reseteando...';
+                try {
+                    // 1) Local: limpiar todo
+                    try { localStorage.clear(); sessionStorage.clear(); } catch (_) {}
+
+                    // 2) Supabase: eliminar datos operativos
+                    if (window.supabaseConfig && window.supabaseConfig.getSupabaseClient) {
+                        const client = await window.supabaseConfig.getSupabaseClient();
+                        const tablas = ['movimientos_stock','sesiones','gastos','productos','salas','notificaciones','reportes'];
+                        for (const t of tablas) {
+                            try { await client.from(t).delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (_) {}
+                        }
+                        // Opcional: limpiar configuración a valores mínimos, no borrar completamente
+                        try { await client.from('configuracion').delete().neq('clave','sistema.nombre'); } catch (_) {}
+                    }
+
+                    alert('✅ Sistema reseteado. Se recargará al login.');
+                    // Volver al login resolviendo ruta correcta
+                    const loginPath = (window.navigationUtils && window.navigationUtils.getLoginPath)
+                        ? window.navigationUtils.getLoginPath() : (location.pathname.includes('/pages/') ? '../login.html' : 'login.html');
+                    window.location.href = loginPath;
+                } catch (e) {
+                    alert('❌ Error reseteando el sistema: ' + (e?.message || e));
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-undo me-2"></i>Resetear Sistema';
+                }
+            });
+        });
+    </script>
 </body>
 </html> 
