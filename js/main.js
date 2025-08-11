@@ -404,9 +404,27 @@ function mostrarErrorConexion() {
 // ===================================================================
 
 function inicializarMenuMovil() {
-    const toggleButtons = Array.from(document.querySelectorAll('.navbar-toggler, .menu-toggle, #menuToggle'));
+    let toggleButtons = Array.from(document.querySelectorAll('.navbar-toggler, .menu-toggle, #menuToggle'));
     const sidebar = document.querySelector('.sidebar');
     let overlay = document.querySelector('#sidebarOverlay');
+
+    // Deduplicar toggles: mantener el primero y eliminar el resto para evitar conflictos
+    if (toggleButtons.length > 1) {
+        const [keep, ...rest] = toggleButtons;
+        rest.forEach(btn => {
+            try { btn.remove(); } catch (_) {}
+        });
+        toggleButtons = [keep];
+    }
+
+    // Deduplicar overlays: mantener el primero
+    const overlays = Array.from(document.querySelectorAll('.sidebar-overlay'));
+    if (overlays.length > 1) {
+        const [keep, ...rest] = overlays;
+        rest.forEach(el => { try { el.remove(); } catch (_) {} });
+        overlay = keep;
+        overlay.id = 'sidebarOverlay';
+    }
 
     if (toggleButtons.length === 0 || !sidebar) return;
 
@@ -445,6 +463,7 @@ function inicializarMenuMovil() {
         const handler = (e) => {
             // En listeners touch/click no pasivos para poder preventDefault cuando sea necesario
             if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
             const isOpen = sidebar.classList.contains('show');
             if (isOpen) {
                 cerrarMenu();
