@@ -444,7 +444,11 @@ class ThemeUXManager {
 
     addLoadingAnimations() {
         // Skeleton loading para elementos que cargan dinámicamente
-        this.observeElementChanges();
+        // NOTE: MutationObserver (observeElementChanges) puede agregar nodos/tooltips dinámicamente
+        // y en algunos navegadores generar repaints costosos al pasar el mouse.
+        // Lo dejamos deshabilitado por defecto para evitar efectos de "parpadeo/recarga" al hover.
+        // Si necesitas reactivar esta optimización, descomenta la siguiente línea.
+        // this.observeElementChanges();
     }
 
     observeElementChanges() {

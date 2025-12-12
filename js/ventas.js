@@ -69,11 +69,48 @@ class GestorVentas {
     }
 
     init() {
-        this.cargarOpcionesSalas();
-        this.configurarEventListeners();
-        this.aplicarFiltrosPorDefecto();
-        this.actualizarEstadisticas();
-        this.actualizarHistorialVentas();
+        // Asegurar catálogo de salas desde Supabase si localStorage está vacío
+        this.ensureSalasCatalogo().then(() => {
+            this.cargarOpcionesSalas();
+            this.configurarEventListeners();
+            this.aplicarFiltrosPorDefecto();
+            this.actualizarEstadisticas();
+            this.actualizarHistorialVentas();
+        });
+    }
+
+    async ensureSalasCatalogo() {
+        try {
+            if (Array.isArray(this.salas) && this.salas.length > 0) return;
+            if (typeof window !== 'undefined' && window.databaseService) {
+                const res = await window.databaseService.select('salas');
+                if (res && res.success && Array.isArray(res.data)) {
+                    // Normalizar a { id, nombre }
+                    const normalizadas = res.data.map(s => ({
+                        id: s.id || s.uuid || s.slug || s.nombre, // fallback si no hay id
+                        nombre: s.nombre || s.name || s.titulo || 'Sala'
+                    }));
+                    this.salas = normalizadas;
+                    try { localStorage.setItem('salas', JSON.stringify(this.salas)); } catch (_) {}
+                }
+            }
+        } catch (e) {
+            console.warn('No fue posible cargar salas desde Supabase:', e?.message || e);
+        }
+    }
+
+    // Resolver nombre visible de la sala para una sesión, con múltiples fallbacks
+    resolverInfoSala(sesion) {
+        const byId = (Array.isArray(this.salas) ? this.salas.find(s => s.id === (sesion.salaId || sesion.sala_id)) : null);
+        const nombreSala = (byId && byId.nombre)
+            || sesion.salaNombre
+            || sesion.sala_nombre
+            || sesion.nombreSala
+            || sesion.sala
+            || null;
+        const estacion = sesion.estacion || sesion.estación || sesion.station || '';
+        const etiqueta = nombreSala ? `${nombreSala}${estacion ? ' - ' + estacion : ''}` : (estacion || 'Sala no identificada');
+        return { nombreSala: nombreSala || null, estacion, etiqueta };
     }
 
     calcularTotalSesion(sesion) {
@@ -259,8 +296,7 @@ class GestorVentas {
         }
 
         tbody.innerHTML = sesiones.map((sesion, index) => {
-            const sala = this.salas.find(s => s.id === sesion.salaId);
-            const salaInfo = sala ? `${sala.nombre} - ${sesion.estacion}` : 'Sala no encontrada';
+            const { etiqueta: salaInfo } = this.resolverInfoSala(sesion);
             
             // Calcular duración
             const inicio = new Date(sesion.fecha_inicio || sesion.inicio);
@@ -547,12 +583,12 @@ class GestorVentas {
         
         const terminoBusqueda = termino.toLowerCase();
         const sesiones = this.aplicarFiltros().filter(sesion => {
-            const sala = this.salas.find(s => s.id === sesion.salaId);
+            const { nombreSala, estacion } = this.resolverInfoSala(sesion);
             return (
-                sesion.cliente.toLowerCase().includes(terminoBusqueda) ||
-                (sala && sala.nombre.toLowerCase().includes(terminoBusqueda)) ||
-                sesion.estacion.toLowerCase().includes(terminoBusqueda) ||
-                sesion.id.toLowerCase().includes(terminoBusqueda)
+                (sesion.cliente && sesion.cliente.toLowerCase().includes(terminoBusqueda)) ||
+                (nombreSala && nombreSala.toLowerCase().includes(terminoBusqueda)) ||
+                (estacion && estacion.toLowerCase().includes(terminoBusqueda)) ||
+                (sesion.id && sesion.id.toLowerCase().includes(terminoBusqueda))
             );
         });
         
@@ -579,8 +615,7 @@ class GestorVentas {
     }
 
     mostrarModalDetalle(sesion) {
-        const sala = this.salas.find(s => s.id === sesion.salaId);
-        const salaInfo = sala ? `${sala.nombre} - ${sesion.estacion}` : 'Sala no encontrada';
+        const { etiqueta: salaInfo } = this.resolverInfoSala(sesion);
         
         // Calcular información de la sesión
         const inicio = new Date(sesion.fecha_inicio || sesion.inicio);
@@ -760,8 +795,7 @@ class GestorVentas {
             return;
         }
 
-        const sala = this.salas.find(s => s.id === sesion.salaId);
-        const salaInfo = sala ? `${sala.nombre} - ${sesion.estacion}` : 'Sala no encontrada';
+        const { etiqueta: salaInfo } = this.resolverInfoSala(sesion);
         
         // Calcular información
         const inicio = new Date(sesion.fecha_inicio || sesion.inicio);

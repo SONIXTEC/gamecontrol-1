@@ -9,6 +9,40 @@ function formatearFecha(fecha) {
     });
 }
 
+// Notificaciones ligeras (toasts simples)
+function mostrarToast(mensaje, tipo = 'info') {
+    const map = {
+        success: 'alert-success',
+        error: 'alert-danger',
+        warning: 'alert-warning',
+        info: 'alert-info'
+    };
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.style.position = 'fixed';
+        container.style.right = '16px';
+        container.style.bottom = '16px';
+        container.style.zIndex = '1080';
+        container.style.maxWidth = '340px';
+        document.body.appendChild(container);
+    }
+    const el = document.createElement('div');
+    el.className = `alert ${map[tipo] || 'alert-info'} shadow-sm border-0`;
+    el.style.marginTop = '8px';
+    el.style.opacity = '0.95';
+    el.innerHTML = `
+        <div class="d-flex align-items-start">
+            <div class="flex-grow-1">${mensaje}</div>
+            <button type="button" class="btn-close" aria-label="Close"></button>
+        </div>
+    `;
+    el.querySelector('.btn-close').onclick = () => el.remove();
+    container.appendChild(el);
+    setTimeout(() => { try { el.remove(); } catch(_) {} }, 4500);
+}
+
 function generarId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
@@ -101,19 +135,27 @@ class GestorUsuarios {
         this.inicializar();
     }
 
-    inicializar() {
-        this.cargarUsuarios();
-        this.sincronizarConAuth();
+    async inicializar() {
+        await this.cargarUsuarios();
         this.configurarEventos();
         this.actualizarEstadisticas();
         this.cargarUsuariosEnTabla();
     }
 
-    cargarUsuarios() {
-        this.usuarios = obtenerUsuarios();
+    async cargarUsuarios() {
+        console.log('🔄 Cargando usuarios...');
         
-        // Sistema limpio - sin usuarios de ejemplo
-        console.log('Sistema de usuarios iniciado:', this.usuarios.length, 'usuarios');
+        // Intentar cargar desde Supabase primero (sincroniza Auth -> BD)
+        await this.sincronizarConAuth();
+        
+        // Si no hay usuarios en Supabase, cargar desde localStorage
+        if (this.usuarios.length === 0) {
+            console.log('⚠️ No hay usuarios en BD, cargando desde localStorage');
+            this.usuarios = obtenerUsuarios();
+        }
+        
+        console.log('✅ Sistema de usuarios iniciado:', this.usuarios.length, 'usuarios');
+        console.log('📋 Usuarios:', this.usuarios.map(u => `${u.email} (${u.rol})`).join(', '));
     }
 
     configurarEventos() {
@@ -229,43 +271,42 @@ class GestorUsuarios {
             permisos[checkbox.value] = true;
         });
 
-        // Guardar en Supabase primero
+        // Guardar en Supabase primero (vía RPC crear_usuario)
         try {
             if (!window.databaseService) {
                 alert('Servicio de base de datos no disponible. Verifica la conexión.');
                 return;
             }
 
-            // Hashear contraseña en Supabase (usa función hash_password)
-            let passwordHash = null;
-            try {
-                const client = await window.databaseService.getClient();
-                const { data: hashed, error: hashError } = await client.rpc('hash_password', { password });
-                if (hashError || !hashed) {
-                    throw hashError || new Error('hash_password retornó vacío');
-                }
-                passwordHash = hashed;
-            } catch (hashErr) {
-                console.error('❌ Error hasheando contraseña en Supabase:', hashErr);
-                alert('No se pudo asegurar la contraseña en el servidor. Reintenta más tarde.');
-                return;
-            }
-
-            const resultado = await window.databaseService.insert('usuarios', {
-                nombre: nombre,
-                email: email,
-                password_hash: passwordHash,
-                rol: rol,
-                estado: 'activo',
-                permisos: permisos
+            const client = await window.databaseService.getClient();
+            const { data: rpcData, error: rpcError } = await client.rpc('crear_usuario', {
+                p_nombre: nombre,
+                p_email: email,
+                p_password: password,
+                p_rol: rol,
+                p_permisos: permisos
             });
 
-            if (!resultado || !resultado.success) {
-                alert('No se pudo guardar el usuario en la base de datos.');
-                return;
+            if (rpcError) {
+                console.error('❌ Error RPC crear_usuario:', rpcError);
+                const msg = rpcError.message || '';
+                // Errores que deben abortar (no se creó remotamente)
+                const erroresCriticos = [
+                    'Solo un administrador puede crear administradores',
+                    'duplicate key value',
+                    'violates unique constraint'
+                ];
+                const esCritico = erroresCriticos.some(t => msg.includes(t));
+                if (esCritico) {
+                    alert('Error guardando en Supabase: ' + msg);
+                    return;
+                }
+
+                // Fallback optimista: actualizar UI localmente
+                console.warn('⚠️ Continuando con actualización local (fallback). Verifica en Supabase si se creó el usuario.');
             }
 
-            const remoto = resultado.data || {};
+            const remoto = (Array.isArray(rpcData) && rpcData.length > 0) ? rpcData[0] : {};
 
             // Mantener una copia local para la UI
             const nuevoUsuario = {
@@ -282,6 +323,28 @@ class GestorUsuarios {
 
             this.usuarios.push(nuevoUsuario);
             guardarUsuarios(this.usuarios);
+
+            // Intentar crear también el usuario en Supabase Auth sin afectar la sesión actual
+            try {
+                if (window.supabaseConfig && typeof window.supabaseConfig.createTempClient === 'function') {
+                    const tempClient = await window.supabaseConfig.createTempClient({
+                        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+                    });
+                    const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
+                        email: email,
+                        password: password
+                    });
+                    if (signUpError) {
+                        console.warn('⚠️ No se pudo registrar en Supabase Auth (continuando):', signUpError.message || signUpError);
+                        mostrarToast('Usuario creado, pero no se pudo registrar en Auth (puede ya existir o requerir confirmación).', 'warning');
+                    } else {
+                        mostrarToast('Usuario registrado en Supabase Auth', 'success');
+                    }
+                }
+            } catch (authErr) {
+                console.warn('⚠️ Error creando usuario en Supabase Auth (no bloqueante):', authErr);
+                mostrarToast('Usuario creado, pero ocurrió un error registrando en Auth', 'warning');
+            }
         } catch (error) {
             console.error('Error creando usuario en Supabase:', error);
             alert('Error guardando en Supabase: ' + (error?.message || 'Desconocido'));
@@ -296,7 +359,7 @@ class GestorUsuarios {
         this.cargarUsuariosEnTabla();
         this.actualizarEstadisticas();
 
-        alert('Usuario creado exitosamente');
+        mostrarToast('Usuario creado exitosamente', 'success');
     }
 
     editarUsuario(usuarioId) {
@@ -722,57 +785,141 @@ class GestorUsuarios {
     }
 
     // Sincronizar usuarios con el sistema de autenticación
-    sincronizarConAuth() {
-        if (!window.authSystem) {
-            setTimeout(() => this.sincronizarConAuth(), 500);
-            return;
-        }
-
-        const authUsers = window.authSystem.users;
-        const usuariosLocales = this.usuarios;
-
-        // Sincronizar usuarios locales al sistema de auth
-        usuariosLocales.forEach(usuario => {
-            let authUser = authUsers.find(u => 
-                u.email === usuario.email
-            );
+    async sincronizarConAuth() {
+        try {
+            console.log('🔄 Sincronizando usuarios con Supabase Auth...');
             
-            if (authUser) {
-                // Actualizar usuario existente en auth system
-                authUser.nombre = usuario.nombre.split(' ')[0];
-                authUser.apellido = usuario.nombre.split(' ').slice(1).join(' ') || '';
-                authUser.email = usuario.email;
-                authUser.rol = this.mapearRol(usuario.rol);
-                authUser.password = usuario.password;
-                authUser.activo = usuario.estado === 'activo';
-                
-                // Crear username si no existe
-                if (!authUser.username) {
-                    authUser.username = this.generarUsername(usuario.nombre, usuario.email);
-                }
-            } else {
-                // Crear nuevo usuario en auth system
-                const nuevoAuthUser = {
-                    id: Math.max(...authUsers.map(u => u.id)) + 1,
-                    username: this.generarUsername(usuario.nombre, usuario.email),
-                    password: usuario.password,
-                    nombre: usuario.nombre.split(' ')[0],
-                    apellido: usuario.nombre.split(' ').slice(1).join(' ') || '',
-                    email: usuario.email,
-                    rol: this.mapearRol(usuario.rol),
-                    avatar: usuario.nombre.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2),
-                    avatarColor: this.generarColorAvatar(),
-                    fechaCreacion: new Date().toISOString(),
-                    activo: usuario.estado === 'activo',
-                    permisos: this.mapearPermisos(usuario.rol)
-                };
-                authUsers.push(nuevoAuthUser);
+            // Verificar si hay conexión a Supabase
+            if (!window.databaseService || !window.supabaseConfig) {
+                console.warn('⚠️ Supabase no disponible, usando solo localStorage');
+                return;
             }
-        });
 
-        // Guardar cambios en auth system
-        window.authSystem.saveUsers(authUsers);
-        console.log('Usuarios sincronizados con el sistema de autenticación');
+            const client = await window.supabaseConfig.getSupabaseClient();
+            if (!client) {
+                console.warn('⚠️ Cliente Supabase no disponible');
+                return;
+            }
+
+            // 1. Obtener usuarios de la tabla usuarios
+            const { data: usuariosBD, error } = await client
+                .from('usuarios')
+                .select('*')
+                .order('fecha_creacion', { ascending: false });
+
+            if (error) {
+                console.error('❌ Error obteniendo usuarios de BD:', error);
+                return;
+            }
+
+            console.log('✅ Usuarios obtenidos de BD:', usuariosBD?.length || 0);
+
+            // 2. Obtener usuarios de Supabase Auth (solo admin puede ver esto)
+            let usuariosAuth = [];
+            try {
+                const { data: authData, error: authError } = await client.auth.admin.listUsers();
+                if (!authError && authData?.users) {
+                    usuariosAuth = authData.users;
+                    console.log('✅ Usuarios de Auth obtenidos:', usuariosAuth.length);
+                }
+            } catch (authErr) {
+                console.warn('⚠️ No se pudo acceder a usuarios de Auth (requiere permisos admin)');
+            }
+
+            // 3. Sincronizar Auth -> Tabla Usuarios (crear usuarios faltantes en la tabla)
+            const emailsAdministradores = [
+                'maurochica23@gmail.com',
+                'admin@gamecontrol.com',
+                'admin@sonixtec.co'
+            ];
+            
+            for (const authUser of usuariosAuth) {
+                const existeEnTabla = usuariosBD?.find(u => u.email === authUser.email);
+                const esAdmin = emailsAdministradores.includes(authUser.email.toLowerCase());
+                const rolAsignado = esAdmin ? 'administrador' : 'operador';
+                
+                if (!existeEnTabla) {
+                    // Crear usuario nuevo en la tabla
+                    const permisosDefecto = obtenerPermisosPorRol(rolAsignado);
+                    
+                    console.log(`📝 Creando usuario en tabla desde Auth: ${authUser.email} (rol: ${rolAsignado})`);
+                    try {
+                        const { error: insertError } = await client
+                            .from('usuarios')
+                            .insert({
+                                email: authUser.email,
+                                nombre: authUser.user_metadata?.nombre || authUser.email.split('@')[0],
+                                rol: rolAsignado,
+                                estado: 'activo',
+                                password_hash: 'managed_by_auth',
+                                permisos: permisosDefecto
+                            });
+                        
+                        if (insertError) {
+                            console.error('❌ Error creando usuario en tabla:', insertError);
+                        } else {
+                            console.log(`✅ Usuario ${authUser.email} creado en tabla como ${rolAsignado}`);
+                        }
+                    } catch (err) {
+                        console.error('❌ Error insertando usuario:', err);
+                    }
+                } else {
+                    // Verificar y actualizar rol si es necesario
+                    if (existeEnTabla.rol !== rolAsignado) {
+                        console.log(`🔄 Actualizando rol de ${authUser.email}: ${existeEnTabla.rol} → ${rolAsignado}`);
+                        try {
+                            const permisosActualizados = obtenerPermisosPorRol(rolAsignado);
+                            const { error: updateError } = await client
+                                .from('usuarios')
+                                .update({
+                                    rol: rolAsignado,
+                                    permisos: permisosActualizados
+                                })
+                                .eq('email', authUser.email);
+                            
+                            if (updateError) {
+                                console.error('❌ Error actualizando rol:', updateError);
+                            } else {
+                                console.log(`✅ Rol actualizado correctamente`);
+                            }
+                        } catch (err) {
+                            console.error('❌ Error al actualizar:', err);
+                        }
+                    } else {
+                        console.log(`ℹ️ Usuario ${authUser.email} ya existe en tabla (rol: ${existeEnTabla.rol})`);
+                    }
+                }
+            }
+
+            // 4. Re-obtener usuarios actualizados
+            const { data: usuariosActualizados } = await client
+                .from('usuarios')
+                .select('*')
+                .order('fecha_creacion', { ascending: false });
+
+            // 5. Sincronizar con localStorage
+            if (usuariosActualizados && usuariosActualizados.length > 0) {
+                this.usuarios = usuariosActualizados.map(u => ({
+                    id: u.id,
+                    nombre: u.nombre,
+                    email: u.email,
+                    password: u.password_hash || 'encrypted',
+                    rol: u.rol,
+                    estado: u.estado,
+                    telefono: u.telefono || '',
+                    direccion: u.direccion || '',
+                    permisos: u.permisos || obtenerPermisosPorRol(u.rol),
+                    fechaCreacion: u.fecha_creacion,
+                    ultimoAcceso: u.ultimo_acceso
+                }));
+                
+                guardarUsuarios(this.usuarios);
+                console.log('✅ Usuarios sincronizados: Auth ↔️ BD ↔️ localStorage');
+            }
+
+        } catch (error) {
+            console.error('❌ Error en sincronizarConAuth:', error);
+        }
     }
 
     // Mapear roles del sistema local al sistema de auth

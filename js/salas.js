@@ -834,24 +834,22 @@ class GestorSalas {
                     <div class="temporizador">${tiempoInfo.formato}</div>
                     <div class="tiempo-estado">${tiempoInfo.excedido ? 'Tiempo excedido' : 'Tiempo restante'}</div>
                 </div>
-                <div class="acciones-rapidas-minimal">
-                    <div class="btn-group" role="group">
-                        <button class="btn btn-outline-primary btn-sm" 
-                                onclick="window.gestorSalas.agregarTiempo('${sesion.id}')" 
-                                title="Agregar tiempo">
-                            <i class="fas fa-clock"></i>
-                        </button>
-                        <button class="btn btn-outline-info btn-sm" 
-                                onclick="window.gestorSalas.agregarProductos('${sesion.id}')" 
-                                title="Agregar productos">
-                            <i class="fas fa-shopping-cart"></i>
-                        </button>
-                        <button class="btn btn-outline-danger btn-sm" 
-                                onclick="window.gestorSalas.finalizarSesion('${sesion.id}')" 
-                                title="Finalizar sesión">
-                            <i class="fas fa-stop"></i>
-                        </button>
-                    </div>
+                <div class="acciones-rapidas-minimal d-flex gap-2 justify-content-center mt-2">
+                    <button class="btn btn-action-minimal btn-add-time" 
+                            onclick="window.gestorSalas.agregarTiempo('${sesion.id}')" 
+                            title="Agregar tiempo">
+                        <i class="fas fa-clock"></i>
+                    </button>
+                    <button class="btn btn-action-minimal btn-add-prod" 
+                            onclick="window.gestorSalas.agregarProductos('${sesion.id}')" 
+                            title="Agregar productos">
+                        <i class="fas fa-shopping-cart"></i>
+                    </button>
+                    <button class="btn btn-action-minimal btn-stop" 
+                            onclick="window.gestorSalas.finalizarSesion('${sesion.id}')" 
+                            title="Finalizar sesión">
+                        <i class="fas fa-stop"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -1417,199 +1415,173 @@ class GestorSalas {
         const totalProductos = sesion.productos?.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) || 0;
         const totalGeneral = tarifaTiempo + totalProductos;
 
-        // Modal de finalización de sesión
+        // Modal de finalización de sesión optimizado para móvil
         const modalHtml = `
             <div class="modal fade" id="modalFinalizarSesion" tabindex="-1" data-bs-backdrop="static">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content modal-finalizacion">
-                        <div class="modal-header-finalizacion">
-                            <div class="titulo-finalizacion">
-                                <i class="fas fa-stop-circle"></i>
-                                <h4>Finalizar Sesión</h4>
-                                <span class="badge bg-warning">${sala.nombre} - ${sesion.estacion}</span>
+                <div class="modal-dialog modal-dialog-centered modal-md">
+                    <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
+                        
+                        <!-- Header Corporativo Compacto -->
+                        <div class="modal-header bg-primary text-white p-3 border-0">
+                            <div class="d-flex align-items-center w-100 justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-white bg-opacity-25 rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                        <i class="fas fa-check-circle fa-sm"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0 fw-bold">Finalizar Sesión</h6>
+                                        <small class="opacity-75" style="font-size: 0.75rem;">${sala.nombre} • ${sesion.estacion}</small>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                         </div>
-                        <div class="modal-body-finalizacion">
-                            <!-- Información del Cliente y Vendedor -->
-                            <div class="row info-basica">
-                                <div class="col-md-6">
-                                    <div class="info-card">
-                                        <div class="info-header">
-                                            <i class="fas fa-user"></i>
-                                            <span>Cliente</span>
-                                        </div>
-                                        <div class="info-valor">${sesion.cliente}</div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="info-card">
-                                        <div class="info-header">
-                                            <i class="fas fa-user-tie"></i>
-                                            <span>Vendedor</span>
-                                        </div>
-                                        <div class="info-valor">${nombreVendedor}</div>
-                                    </div>
-                                </div>
+
+                        <div class="modal-body p-0 bg-light">
+                            <!-- Total Principal -->
+                            <div class="bg-white p-3 text-center border-bottom">
+                                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">Total a Pagar</small>
+                                <h2 class="mb-0 text-primary fw-bold mt-1">${formatearMoneda(totalGeneral)}</h2>
                             </div>
 
-                            <!-- Fechas y Duración -->
-                            <div class="row info-tiempo">
-                                <div class="col-md-4">
-                                    <div class="info-card-mini">
-                                        <i class="fas fa-play-circle text-success"></i>
-                                        <div>
-                                            <small>Inicio</small>
-                                            <div class="fw-semibold">${fechaInicio.toLocaleDateString('es-ES')}</div>
-                                            <div class="text-muted">${fechaInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="info-card-mini">
-                                        <i class="fas fa-stop-circle text-danger"></i>
-                                        <div>
-                                            <small>Cierre</small>
-                                            <div class="fw-semibold">${ahora.toLocaleDateString('es-ES')}</div>
-                                            <div class="text-muted">${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="info-card-mini">
-                                        <i class="fas fa-clock text-info"></i>
-                                        <div>
-                                            <small>Duración Total</small>
-                                            <div class="fw-semibold">${Math.floor(duracionTotal / 60)}h ${duracionTotal % 60}m</div>
-                                            <div class="text-muted">${duracionTotal} minutos</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Detalle de Consumo -->
-                            <div class="detalle-consumo">
-                                <div class="seccion-titulo">
-                                    <i class="fas fa-receipt"></i>
-                                    <span>Detalle de Consumo</span>
-                                </div>
-                                
-                                <!-- Tiempo de Juego -->
-                                <div class="consumo-categoria">
-                                    <div class="categoria-header">
-                                        <i class="fas fa-gamepad"></i>
-                                        <span>Tiempo de Juego</span>
-                                        <span class="categoria-total">${formatearMoneda(tarifaTiempo)}</span>
-                                    </div>
-                                    <div class="items-lista">
-                                        <div class="item-fila">
-                                            <span>Tiempo base de sesión</span>
-                                            <span>${formatearMoneda(sesion.tarifa_base || 0)}</span>
-                                        </div>
-                                        ${sesion.tiemposAdicionales?.map(tiempo => `
-                                            <div class="item-fila">
-                                                <span>Tiempo adicional (${tiempo.minutos} min)</span>
-                                                <span>${formatearMoneda(tiempo.costo || 0)}</span>
+                            <div class="p-3">
+                                <!-- Info Resumida -->
+                                <div class="card border-0 shadow-sm mb-3 rounded-3">
+                                    <div class="card-body p-2">
+                                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-light">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <i class="fas fa-user text-muted fa-sm"></i>
+                                                <span class="small fw-medium text-dark">${sesion.cliente}</span>
                                             </div>
-                                        `).join('') || ''}
-                                        ${sesion.costoAdicional ? `
-                                            <div class="item-fila">
-                                                <span>Tiempo adicional</span>
-                                                <span>${formatearMoneda(sesion.costoAdicional)}</span>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <i class="fas fa-clock text-muted fa-sm"></i>
+                                                <span class="small fw-medium text-dark">${Math.floor(duracionTotal / 60)}h ${duracionTotal % 60}m</span>
                                             </div>
-                                        ` : ''}
-                                    </div>
-                                </div>
-
-                                ${sesion.productos && sesion.productos.length > 0 ? `
-                                    <!-- Productos Consumidos -->
-                                    <div class="consumo-categoria">
-                                        <div class="categoria-header">
-                                            <i class="fas fa-shopping-cart"></i>
-                                            <span>Productos Consumidos</span>
-                                            <span class="categoria-total">${formatearMoneda(totalProductos)}</span>
                                         </div>
-                                        <div class="items-lista">
-                                            ${sesion.productos.map(producto => `
-                                                <div class="item-fila">
-                                                    <span>${producto.cantidad}x ${producto.nombre}</span>
-                                                    <span>${formatearMoneda(producto.subtotal || (producto.cantidad * producto.precio))}</span>
+                                        
+                                        <!-- Detalles Desplegables -->
+                                        <div class="accordion accordion-flush" id="accordionDetalles">
+                                            <div class="accordion-item border-0">
+                                                <h2 class="accordion-header">
+                                                    <button class="accordion-button collapsed py-1 px-0 shadow-none bg-transparent small text-muted" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDetalles">
+                                                        <i class="fas fa-list-ul me-2"></i>Ver detalles del consumo
+                                                    </button>
+                                                </h2>
+                                                <div id="collapseDetalles" class="accordion-collapse collapse" data-bs-parent="#accordionDetalles">
+                                                    <div class="accordion-body px-0 py-2">
+                                                        <div class="d-flex justify-content-between small mb-1">
+                                                            <span class="text-muted">Tiempo de Juego</span>
+                                                            <span class="fw-medium">${formatearMoneda(tarifaTiempo)}</span>
+                                                        </div>
+                                                        ${sesion.productos && sesion.productos.length > 0 ? `
+                                                            <div class="d-flex justify-content-between small mb-1">
+                                                                <span class="text-muted">Productos (${sesion.productos.length})</span>
+                                                                <span class="fw-medium">${formatearMoneda(totalProductos)}</span>
+                                                            </div>
+                                                            <div class="ps-2 border-start border-2 mt-1 mb-2">
+                                                                ${sesion.productos.map(p => `
+                                                                    <div class="d-flex justify-content-between text-muted" style="font-size: 0.75rem;">
+                                                                        <span>${p.cantidad}x ${p.nombre}</span>
+                                                                        <span>${formatearMoneda(p.subtotal || (p.cantidad * p.precio))}</span>
+                                                                    </div>
+                                                                `).join('')}
+                                                            </div>
+                                                        ` : ''}
+                                                    </div>
                                                 </div>
-                                            `).join('')}
+                                            </div>
                                         </div>
                                     </div>
-                                ` : ''}
+                                </div>
 
-                                <!-- Total General -->
-                                <div class="total-general">
-                                    <div class="total-fila">
-                                        <span class="total-label">TOTAL A PAGAR</span>
-                                        <span class="total-valor">${formatearMoneda(totalGeneral)}</span>
+                                <!-- Método de Pago Compacto -->
+                                <div class="mb-3">
+                                    <label class="small text-muted fw-bold mb-2 d-block">MÉTODO DE PAGO</label>
+                                    <div class="row g-2" id="metodosPagoContainer">
+                                        <div class="col-6">
+                                            <input type="radio" class="btn-check" name="metodoPago" id="efectivo" value="efectivo" checked>
+                                            <label class="btn btn-outline-secondary w-100 btn-sm py-2 border-0 shadow-sm bg-white text-start" for="efectivo">
+                                                <i class="fas fa-money-bill-wave text-success me-2"></i>Efectivo
+                                            </label>
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="radio" class="btn-check" name="metodoPago" id="tarjeta" value="tarjeta">
+                                            <label class="btn btn-outline-secondary w-100 btn-sm py-2 border-0 shadow-sm bg-white text-start" for="tarjeta">
+                                                <i class="fas fa-credit-card text-primary me-2"></i>Tarjeta
+                                            </label>
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="radio" class="btn-check" name="metodoPago" id="transferencia" value="transferencia">
+                                            <label class="btn btn-outline-secondary w-100 btn-sm py-2 border-0 shadow-sm bg-white text-start" for="transferencia">
+                                                <i class="fas fa-university text-info me-2"></i>Transf.
+                                            </label>
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="radio" class="btn-check" name="metodoPago" id="qr" value="qr">
+                                            <label class="btn btn-outline-secondary w-100 btn-sm py-2 border-0 shadow-sm bg-white text-start" for="qr">
+                                                <i class="fas fa-qrcode text-dark me-2"></i>QR/Digital
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Detalles de Transferencia (Oculto por defecto) -->
+                                    <div id="detallesTransferencia" class="mt-3 d-none animate__animated animate__fadeIn">
+                                        <div class="bg-light p-3 rounded-3 border border-info bg-opacity-10">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <i class="fas fa-info-circle text-info me-2"></i>
+                                                <span class="fw-bold text-dark small">Datos para Transferencia</span>
+                                            </div>
+                                            <div class="text-center bg-white p-2 rounded border mb-2">
+                                                <span class="badge bg-primary me-1">NEQUI</span>
+                                                <span class="badge bg-danger me-1">DAVIPLATA</span>
+                                                <span class="badge bg-warning text-dark">LLAVE</span>
+                                            </div>
+                                            <div class="d-flex align-items-center justify-content-between bg-white p-2 rounded border">
+                                                <span class="text-muted small">Número de cuenta:</span>
+                                                <div class="d-flex align-items-center">
+                                                    <span class="fw-bold text-dark me-2 font-monospace">3045528042</span>
+                                                    <button class="btn btn-link btn-sm p-0 text-primary" onclick="navigator.clipboard.writeText('3045528042'); window.mostrarNotificacion('Copiado al portapapeles', 'success');" title="Copiar">
+                                                        <i class="far fa-copy"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Detalles QR (Oculto por defecto) -->
+                                    <div id="detallesQR" class="mt-3 d-none animate__animated animate__fadeIn text-center">
+                                        <div class="bg-light p-3 rounded-3 border border-dark bg-opacity-10">
+                                            <h6 class="fw-bold text-dark mb-2">Escanea para pagar</h6>
+                                            <div class="bg-white p-2 rounded shadow-sm d-inline-block">
+                                                <img src="https://res.cloudinary.com/dtygv4kfq/image/upload/v1765550513/unnamed_1_hbxbr8.png" 
+                                                     alt="Código QR de Pago" 
+                                                     class="img-fluid rounded" 
+                                                     style="max-height: 250px; width: auto; object-fit: contain;">
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <!-- Método de Pago -->
-                            <div class="metodo-pago">
-                                <div class="seccion-titulo">
-                                    <i class="fas fa-credit-card"></i>
-                                    <span>Método de Pago</span>
-                                </div>
-                                <div class="opciones-pago">
-                                    <div class="form-check pago-opcion">
-                                        <input class="form-check-input" type="radio" name="metodoPago" id="efectivo" value="efectivo" checked>
-                                        <label class="form-check-label" for="efectivo">
-                                            <i class="fas fa-money-bill-wave"></i>
-                                            <span>Efectivo</span>
-                                        </label>
-                                    </div>
-                                    <div class="form-check pago-opcion">
-                                        <input class="form-check-input" type="radio" name="metodoPago" id="tarjeta" value="tarjeta">
-                                        <label class="form-check-label" for="tarjeta">
-                                            <i class="fas fa-credit-card"></i>
-                                            <span>Tarjeta</span>
-                                        </label>
-                                    </div>
-                                    <div class="form-check pago-opcion">
-                                        <input class="form-check-input" type="radio" name="metodoPago" id="transferencia" value="transferencia">
-                                        <label class="form-check-label" for="transferencia">
-                                            <i class="fas fa-university"></i>
-                                            <span>Transferencia</span>
-                                        </label>
-                                    </div>
-                                    <div class="form-check pago-opcion">
-                                        <input class="form-check-input" type="radio" name="metodoPago" id="qr" value="qr">
-                                        <label class="form-check-label" for="qr">
-                                            <i class="fas fa-qrcode"></i>
-                                            <span>QR/Digital</span>
-                                        </label>
+                                <!-- Notas (Colapsadas por defecto) -->
+                                <div class="mb-0">
+                                    <a class="text-decoration-none small text-muted d-flex align-items-center gap-1 mb-1" data-bs-toggle="collapse" href="#collapseNotas" role="button">
+                                        <i class="fas fa-comment-alt"></i> Agregar nota (opcional)
+                                    </a>
+                                    <div class="collapse" id="collapseNotas">
+                                        <textarea class="form-control form-control-sm shadow-sm border-0" rows="2" id="notasFinalizacion" placeholder="Observaciones..."></textarea>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- Notas Adicionales -->
-                            <div class="notas-adicionales">
-                                <label class="form-label">
-                                    <i class="fas fa-sticky-note me-2"></i>Notas adicionales (opcional)
-                                </label>
-                                <textarea class="form-control" rows="2" id="notasFinalizacion" placeholder="Observaciones sobre la sesión..."></textarea>
                             </div>
                         </div>
-                        <div class="modal-footer-finalizacion">
-                            <div class="resumen-footer">
-                                <div class="total-footer">
-                                    <span class="total-texto">Total:</span>
-                                    <span class="total-monto">${formatearMoneda(totalGeneral)}</span>
-                                </div>
-                                <div class="metodo-seleccionado">
-                                    <span id="metodoSeleccionadoTexto">Efectivo</span>
-                                </div>
-                            </div>
-                            <div class="acciones-finalizacion">
-                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                                    <i class="fas fa-times me-2"></i>Cancelar
+
+                        <!-- Footer Fijo -->
+                        <div class="modal-footer border-top-0 bg-white p-3">
+                            <div class="d-flex gap-2 w-100">
+                                <button type="button" class="btn btn-light flex-grow-1 border-0 bg-light text-muted" data-bs-dismiss="modal">
+                                    Cancelar
                                 </button>
-                                <button type="button" class="btn btn-success btn-finalizar" onclick="window.gestorSalas.procesarFinalizacion('${sesionId}')">
-                                    <i class="fas fa-check me-2"></i>Finalizar y Cobrar
+                                <button type="button" class="btn btn-primary flex-grow-1 fw-bold shadow-sm" onclick="window.gestorSalas.procesarFinalizacion('${sesionId}')">
+                                    <i class="fas fa-check me-2"></i>Cobrar
                                 </button>
                             </div>
                         </div>
@@ -1639,6 +1611,8 @@ class GestorSalas {
     configurarEventosMetodoPago() {
         const radiosPago = document.querySelectorAll('input[name="metodoPago"]');
         const metodoTexto = document.getElementById('metodoSeleccionadoTexto');
+        const detallesTransferencia = document.getElementById('detallesTransferencia');
+        const detallesQR = document.getElementById('detallesQR');
         
         radiosPago.forEach(radio => {
             radio.addEventListener('change', function() {
@@ -1650,6 +1624,18 @@ class GestorSalas {
                 };
                 if (metodoTexto) {
                     metodoTexto.textContent = metodosTexto[this.value] || this.value;
+                }
+
+                // Mostrar/Ocultar detalles
+                if (this.value === 'transferencia') {
+                    detallesTransferencia.classList.remove('d-none');
+                    if(detallesQR) detallesQR.classList.add('d-none');
+                } else if (this.value === 'qr') {
+                    if(detallesQR) detallesQR.classList.remove('d-none');
+                    detallesTransferencia.classList.add('d-none');
+                } else {
+                    detallesTransferencia.classList.add('d-none');
+                    if(detallesQR) detallesQR.classList.add('d-none');
                 }
             });
         });
@@ -2540,171 +2526,94 @@ class GestorSalas {
         const tarifas = this.config.tarifasPorSala[sala.id] || this.obtenerTarifasDefault(sala);
         const tipoInfo = CONFIG.tiposConsola[sala.tipo] || { icon: 'fas fa-gamepad', nombre: 'Consola' };
 
-        // Mostrar modal para agregar tiempo con opciones diferenciadas
+        // Corporate Compact Modal
         const modalHtml = `
-            <div class="modal fade" id="modalAgregarTiempo" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">
-                                <i class="${tipoInfo.icon} me-2"></i>
-                                Agregar Tiempo - ${sala.nombre}
+            <div class="modal fade" id="modalAgregarTiempo" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-md">
+                    <div class="modal-content border-0 shadow">
+                        <div class="modal-header border-bottom-0 pb-0">
+                            <h5 class="modal-title fw-bold">
+                                <i class="${tipoInfo.icon} me-2 text-primary"></i>Agregar Tiempo
                             </h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
-                        <div class="modal-body">
-                            <div class="info-sesion mb-4">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="d-flex align-items-center mb-2">
-                                            <i class="fas fa-user me-2 text-primary"></i>
-                                            <strong>Cliente:</strong>
-                                            <span class="ms-2">${sesion.cliente}</span>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="d-flex align-items-center mb-2">
-                                            <i class="fas fa-tv me-2 text-primary"></i>
-                                            <strong>Estación:</strong>
-                                            <span class="ms-2">${sesion.estacion}</span>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div class="modal-body pt-2">
+                            <div class="d-flex justify-content-between align-items-center mb-3 text-muted small">
+                                <span><i class="fas fa-user me-1"></i> ${sesion.cliente}</span>
+                                <span><i class="fas fa-tv me-1"></i> ${sesion.estacion}</span>
                             </div>
 
-                            <div class="tiempo-options-container">
-                                <h6 class="tiempo-options-title">
-                                    <i class="fas fa-clock"></i>
-                                    Seleccionar tiempo adicional:
-                                </h6>
+                            <h6 class="text-uppercase text-muted small fw-bold mb-2">Seleccionar Duración</h6>
                             
-                                <div class="row g-3">
-                                <div class="col-md-6">
-                                    <div class="tiempo-option">
-                                        <input type="radio" name="tiempoAdicional" value="30" id="tiempo30" class="d-none">
-                                        <label for="tiempo30" class="tiempo-card">
-                                            <div class="tiempo-header">
-                                                <div class="tiempo-titulo">
-                                                    <i class="fas fa-clock me-2 text-primary"></i>
-                                                    30 minutos
-                                                </div>
-                                                <div class="tiempo-precio">${formatearMoneda(tarifas.t30)}</div>
-                                            </div>
-                                            <div class="tiempo-detalle">
-                                                <i class="fas fa-calculator me-1"></i>
-                                                ${this.calcularPrecioPorMinuto(tarifas.t30, 30)}/min
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="tiempo-option">
-                                        <input type="radio" name="tiempoAdicional" value="60" id="tiempo60" class="d-none" checked>
-                                        <label for="tiempo60" class="tiempo-card selected">
-                                            <div class="tiempo-header">
-                                                <div class="tiempo-titulo">
-                                                    <i class="fas fa-clock me-2 text-success"></i>
-                                                    1 hora
-                                                    <span class="badge bg-success ms-2" style="font-size: 0.6rem;">Popular</span>
-                                                </div>
-                                                <div class="tiempo-precio">${formatearMoneda(tarifas.t60)}</div>
-                                            </div>
-                                            <div class="tiempo-detalle">
-                                                <i class="fas fa-calculator me-1"></i>
-                                                ${this.calcularPrecioPorMinuto(tarifas.t60, 60)}/min
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="tiempo-option">
-                                        <input type="radio" name="tiempoAdicional" value="90" id="tiempo90" class="d-none">
-                                        <label for="tiempo90" class="tiempo-card">
-                                            <div class="tiempo-header">
-                                                <div class="tiempo-titulo">
-                                                    <i class="fas fa-clock me-2 text-warning"></i>
-                                                    1.5 horas
-                                                    <span class="badge bg-warning ms-2" style="font-size: 0.6rem;">Extendido</span>
-                                                </div>
-                                                <div class="tiempo-precio">${formatearMoneda(tarifas.t90)}</div>
-                                            </div>
-                                            <div class="tiempo-detalle">
-                                                <i class="fas fa-calculator me-1"></i>
-                                                ${this.calcularPrecioPorMinuto(tarifas.t90, 90)}/min
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="tiempo-option">
-                                        <input type="radio" name="tiempoAdicional" value="120" id="tiempo120" class="d-none">
-                                        <label for="tiempo120" class="tiempo-card">
-                                            <div class="tiempo-header">
-                                                <div class="tiempo-titulo">
-                                                    <i class="fas fa-clock me-2 text-info"></i>
-                                                    2 horas
-                                                    <span class="badge bg-info ms-2" style="font-size: 0.6rem;">Máximo</span>
-                                                </div>
-                                                <div class="tiempo-precio">${formatearMoneda(tarifas.t120)}</div>
-                                            </div>
-                                            <div class="tiempo-detalle">
-                                                <i class="fas fa-calculator me-1"></i>
-                                                ${this.calcularPrecioPorMinuto(tarifas.t120, 120)}/min
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                                
-                                <div class="tiempo-option mt-3">
-                                <input type="radio" name="tiempoAdicional" value="custom" id="tiempoCustom" class="d-none">
-                                <label for="tiempoCustom" class="tiempo-card tiempo-custom">
-                                    <div class="tiempo-header">
-                                        <div class="tiempo-titulo">
-                                            <i class="fas fa-edit me-2 text-secondary"></i>
-                                            Tiempo personalizado
-                                            <span class="badge bg-secondary ms-2" style="font-size: 0.6rem;">Flexible</span>
+                            <div class="list-group list-group-flush mb-3" id="listaTiempos">
+                                <label class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 border rounded mb-2 cursor-pointer">
+                                    <div class="d-flex align-items-center">
+                                        <input class="form-check-input me-3" type="radio" name="tiempoAdicional" value="30" id="tiempo30">
+                                        <div>
+                                            <div class="fw-bold">30 Minutos</div>
+                                            <div class="small text-muted">${this.calcularPrecioPorMinuto(tarifas.t30, 30)}/min</div>
                                         </div>
-                                        <div class="tiempo-precio" id="precioCustomAdicional">${formatearMoneda(0)}</div>
                                     </div>
-                                    <div class="tiempo-detalle">
-                                        <div class="input-group input-group-sm">
-                                            <input type="number" id="minutosCustomAdicional" 
-                                                   class="form-control" 
-                                                   placeholder="45" min="15" step="15" value="45">
-                                            <span class="input-group-text">min</span>
+                                    <span class="fw-bold text-primary">${formatearMoneda(tarifas.t30)}</span>
+                                </label>
+
+                                <label class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 border rounded mb-2 cursor-pointer active-option bg-light">
+                                    <div class="d-flex align-items-center">
+                                        <input class="form-check-input me-3" type="radio" name="tiempoAdicional" value="60" id="tiempo60" checked>
+                                        <div>
+                                            <div class="fw-bold">1 Hora</div>
+                                            <div class="small text-muted">${this.calcularPrecioPorMinuto(tarifas.t60, 60)}/min</div>
                                         </div>
-                                        <span class="precio-por-minuto" id="precioPorMinutoAdicional"></span>
+                                    </div>
+                                    <span class="fw-bold text-primary">${formatearMoneda(tarifas.t60)}</span>
+                                </label>
+
+                                <label class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 border rounded mb-2 cursor-pointer">
+                                    <div class="d-flex align-items-center">
+                                        <input class="form-check-input me-3" type="radio" name="tiempoAdicional" value="90" id="tiempo90">
+                                        <div>
+                                            <div class="fw-bold">1.5 Horas</div>
+                                            <div class="small text-muted">${this.calcularPrecioPorMinuto(tarifas.t90, 90)}/min</div>
+                                        </div>
+                                    </div>
+                                    <span class="fw-bold text-primary">${formatearMoneda(tarifas.t90)}</span>
+                                </label>
+
+                                <label class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 border rounded mb-2 cursor-pointer">
+                                    <div class="d-flex align-items-center">
+                                        <input class="form-check-input me-3" type="radio" name="tiempoAdicional" value="120" id="tiempo120">
+                                        <div>
+                                            <div class="fw-bold">2 Horas</div>
+                                            <div class="small text-muted">${this.calcularPrecioPorMinuto(tarifas.t120, 120)}/min</div>
+                                        </div>
+                                    </div>
+                                    <span class="fw-bold text-primary">${formatearMoneda(tarifas.t120)}</span>
+                                </label>
+                                
+                                <label class="list-group-item list-group-item-action d-flex flex-column p-3 border rounded mb-2 cursor-pointer">
+                                    <div class="d-flex justify-content-between align-items-center w-100 mb-2">
+                                        <div class="d-flex align-items-center">
+                                            <input class="form-check-input me-3" type="radio" name="tiempoAdicional" value="custom" id="tiempoCustom">
+                                            <div class="fw-bold">Personalizado</div>
+                                        </div>
+                                        <span class="fw-bold text-primary" id="precioCustomAdicional">${formatearMoneda(0)}</span>
+                                    </div>
+                                    <div class="input-group input-group-sm w-100 ps-4">
+                                        <input type="number" class="form-control" id="minutosCustomAdicional" placeholder="Minutos" disabled min="15" step="15" value="45">
+                                        <span class="input-group-text">min</span>
                                     </div>
                                 </label>
-                                </div>
                             </div>
 
-                            <div class="total-section">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div class="d-flex align-items-center">
-                                        <i class="fas fa-receipt me-2 text-success"></i>
-                                        <span class="h6 mb-0">Total tiempo adicional:</span>
-                                    </div>
-                                    <div class="d-flex align-items-center">
-                                        <i class="fas fa-dollar-sign me-1 text-success"></i>
-                                        <span class="h4 mb-0 text-success fw-bold" id="totalAdicional">${formatearMoneda(0)}</span>
-                                    </div>
-                                </div>
-                                <div class="mt-2 pt-2 border-top border-success">
-                                    <small class="text-muted">
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        Este costo se agregará al total de la sesión
-                                    </small>
-                                </div>
+                            <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-2">
+                                <span class="text-muted">Total a agregar:</span>
+                                <span class="h4 mb-0 text-success fw-bold" id="totalAdicional">${formatearMoneda(tarifas.t60)}</span>
                             </div>
                         </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="button" class="btn btn-primary" onclick="window.gestorSalas.confirmarAgregarTiempo('${sesionId}')">
-                                <i class="fas fa-plus me-2"></i>Agregar Tiempo
+                        <div class="modal-footer border-top-0 pt-0">
+                            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="button" class="btn btn-primary px-4" onclick="window.gestorSalas.confirmarAgregarTiempo('${sesionId}')">
+                                Agregar
                             </button>
                         </div>
                     </div>
@@ -2724,18 +2633,6 @@ class GestorSalas {
         const modal = new bootstrap.Modal(document.getElementById('modalAgregarTiempo'));
         modal.show();
         
-        // Actualizar el total inicial después de mostrar el modal
-        setTimeout(() => {
-            // Asegurar que la opción de 1 hora esté seleccionada por defecto
-            const tiempo60 = document.getElementById('tiempo60');
-            const tarjeta60 = document.querySelector('label[for="tiempo60"]');
-            if (tiempo60 && tarjeta60) {
-                tiempo60.checked = true;
-                tarjeta60.classList.add('selected');
-            }
-            this.actualizarTotalAgregarTiempo(sala.id);
-        }, 150);
-
         // Configurar la limpieza del modal cuando se cierre
         document.getElementById('modalAgregarTiempo').addEventListener('hidden.bs.modal', function () {
             this.remove();
@@ -2744,23 +2641,22 @@ class GestorSalas {
 
     configurarEventosAgregarTiempo(salaId) {
         const actualizarSeleccion = (valorSeleccionado) => {
-            // Remover selección anterior
-            document.querySelectorAll('.tiempo-card').forEach(card => {
-                card.classList.remove('selected');
+            // Remover estilos de selección anterior
+            document.querySelectorAll('#listaTiempos .list-group-item').forEach(item => {
+                item.classList.remove('active-option', 'bg-light', 'border-primary');
+                item.classList.add('border');
             });
             
-            // Desmarcar todos los radios
-            document.querySelectorAll('input[name="tiempoAdicional"]').forEach(radio => {
-                radio.checked = false;
-            });
-            
-            // Marcar el radio seleccionado y su tarjeta
+            // Encontrar el radio seleccionado
             const radioSeleccionado = document.querySelector(`input[name="tiempoAdicional"][value="${valorSeleccionado}"]`);
+            
             if (radioSeleccionado) {
                 radioSeleccionado.checked = true;
-                const tarjeta = radioSeleccionado.nextElementSibling;
-                if (tarjeta) {
-                    tarjeta.classList.add('selected');
+                // Encontrar el label contenedor
+                const item = radioSeleccionado.closest('.list-group-item');
+                if (item) {
+                    item.classList.add('active-option', 'bg-light', 'border-primary');
+                    item.classList.remove('border');
                 }
             }
             
@@ -2768,30 +2664,20 @@ class GestorSalas {
             this.actualizarTotalAgregarTiempo(salaId);
             
             // Mostrar/ocultar campo custom
-            const contenedorCustom = document.getElementById('minutosCustomAdicional');
-            if (contenedorCustom) {
-                contenedorCustom.disabled = valorSeleccionado !== 'custom';
+            const inputCustom = document.getElementById('minutosCustomAdicional');
+            if (inputCustom) {
+                inputCustom.disabled = valorSeleccionado !== 'custom';
                 if (valorSeleccionado === 'custom') {
-                    contenedorCustom.focus();
+                    inputCustom.focus();
                 }
             }
         };
 
-        // Configurar eventos para las tarjetas de tiempo (tanto radio como label)
+        // Eventos para radios
         document.querySelectorAll('input[name="tiempoAdicional"]').forEach(radio => {
-            // Evento change en el radio button
             radio.addEventListener('change', (e) => {
                 actualizarSeleccion(e.target.value);
             });
-            
-            // Evento click en el label (tarjeta)
-            const label = radio.nextElementSibling;
-            if (label && label.tagName === 'LABEL') {
-                label.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    actualizarSeleccion(radio.value);
-                });
-            }
         });
 
         // Configurar evento para tiempo personalizado
@@ -2974,39 +2860,67 @@ class GestorSalas {
         const sala = this.salas.find(s => s.id === sesion.salaId);
         if (!sala) return;
 
-        // Mostrar modal para agregar productos - Versión Compacta
+        // Mostrar modal para agregar productos - Versión Compacta Corporativa
         const modalHtml = `
-            <div class="modal fade" id="modalAgregarProductos" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content modal-productos-compacto">
-                        <div class="modal-header-compacto">
-                            <div class="sesion-info-mini">
-                                <i class="fas fa-gamepad"></i>
-                                <span class="fw-semibold">${sala.nombre}</span>
-                                <span class="text-muted">•</span>
-                                <span class="badge bg-primary">${sesion.estacion}</span>
-                                <span class="text-muted">•</span>
-                                <span class="cliente-mini">${sesion.cliente}</span>
+            <div class="modal fade" id="modalAgregarProductos" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered modal-md modal-dialog-scrollable">
+                    <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden; max-height: 90vh;">
+                        
+                        <!-- Header Corporativo Compacto -->
+                        <div class="modal-header bg-primary text-white p-3 border-0 flex-shrink-0">
+                            <div class="d-flex align-items-center w-100 justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-white bg-opacity-25 rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                        <i class="fas fa-shopping-cart fa-sm"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0 fw-bold">Agregar Productos</h6>
+                                        <small class="opacity-75" style="font-size: 0.75rem;">${sala.nombre} • ${sesion.estacion}</small>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
-                            <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
                         </div>
-                        <div class="modal-body-compacto">
-                            <div id="listaProductos" class="productos-compacto">
+
+                        <!-- Body con Buscador y Lista -->
+                        <div class="modal-body p-0 bg-light d-flex flex-column">
+                            <!-- Buscador Sticky Mejorado -->
+                            <div class="p-3 bg-white border-bottom sticky-top shadow-sm" style="z-index: 10;">
+                                <div class="position-relative">
+                                    <i class="fas fa-search text-muted position-absolute top-50 start-0 translate-middle-y ms-3"></i>
+                                    <input type="text" class="form-control form-control-lg bg-light border-0 ps-5 pe-5 rounded-pill shadow-none" 
+                                           id="buscadorProductos" 
+                                           placeholder="Buscar producto..." 
+                                           style="font-size: 0.95rem; background-color: #f8f9fa !important;"
+                                           autocomplete="off"
+                                           onkeyup="window.gestorSalas.filtrarProductosModal(this.value)">
+                                    <button class="btn btn-link text-muted position-absolute top-50 end-0 translate-middle-y me-2 p-0 d-none text-decoration-none" 
+                                            id="btnLimpiarBusqueda"
+                                            onclick="document.getElementById('buscadorProductos').value = ''; window.gestorSalas.filtrarProductosModal(''); document.getElementById('buscadorProductos').focus();"
+                                            style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-times-circle"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Lista de Productos -->
+                            <div id="listaProductos" class="p-2 flex-grow-1 overflow-auto">
                                 <!-- Los productos se cargarán dinámicamente -->
                             </div>
                         </div>
-                        <div class="modal-footer-compacto">
-                            <div class="total-compacto">
-                                <span class="total-label">Total:</span>
-                                <span class="total-valor" id="totalProductos">$0</span>
-                                <span class="total-items" id="resumenProductos">0 items</span>
-                            </div>
-                            <div class="acciones-compacto">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                                <button type="button" class="btn btn-sm btn-primary" onclick="window.gestorSalas.confirmarAgregarProductos('${sesionId}')" disabled>
-                                    <i class="fas fa-plus me-1"></i>Agregar
+
+                        <!-- Footer Fijo -->
+                        <div class="modal-footer border-top bg-white p-3 flex-shrink-0">
+                            <div class="d-flex flex-column w-100 gap-2">
+                                <div class="d-flex justify-content-between align-items-center px-1">
+                                    <span class="text-muted small" id="resumenProductos">0 items seleccionados</span>
+                                    <div class="text-end">
+                                        <small class="text-muted d-block" style="font-size: 0.7rem;">TOTAL</small>
+                                        <span class="fw-bold text-primary fs-5" id="totalProductos">$0</span>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary w-100 fw-bold shadow-sm" onclick="window.gestorSalas.confirmarAgregarProductos('${sesionId}')" id="btnConfirmarProductos" disabled>
+                                    <i class="fas fa-plus-circle me-2"></i>Agregar a la Cuenta
                                 </button>
                             </div>
                         </div>
@@ -3170,31 +3084,29 @@ class GestorSalas {
         };
 
         listaProductos.innerHTML = Object.entries(productosPorCategoria).map(([categoria, productos]) => `
-            <div class="categoria-compacta">
-                <div class="categoria-header-mini">
+            <div class="mb-3 categoria-container">
+                <h6 class="px-2 mb-2 text-muted fw-bold small text-uppercase d-flex align-items-center gap-2 sticky-top bg-light py-1" style="top: -1px; z-index: 5;">
                     <i class="${iconosCategoria[categoria] || iconosDefault[categoria] || 'fas fa-box'}"></i>
-                    <span>${categoria}</span>
-                    <small>(${productos.length})</small>
-                </div>
-                <div class="productos-lista-compacta">
+                    ${categoria}
+                </h6>
+                <div class="list-group shadow-sm rounded-3 border-0">
                     ${productos.map(producto => `
-                        <div class="producto-fila-compacta">
-                            <div class="producto-info-mini">
-                                <div class="nombre-precio">
-                                    <span class="nombre-compacto">${producto.nombre}</span>
-                                    <span class="precio-compacto">${formatearMoneda(producto.precio)}</span>
-                                </div>
-                                <div class="stock-compacto ${producto.stock <= 5 ? 'stock-bajo' : ''}">
-                                    <i class="fas fa-box fa-xs"></i>
-                                    <span>${producto.stock}</span>
+                        <div class="list-group-item border-0 border-bottom p-2 d-flex align-items-center justify-content-between bg-white producto-item" data-nombre="${producto.nombre.toLowerCase()}">
+                            <div class="d-flex flex-column" style="max-width: 60%;">
+                                <span class="fw-medium text-dark text-truncate">${producto.nombre}</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="text-primary fw-bold small">${formatearMoneda(producto.precio)}</span>
+                                    <span class="badge bg-light text-muted border rounded-pill" style="font-size: 0.65rem;">Stock: ${producto.stock}</span>
                                 </div>
                             </div>
-                            <div class="cantidad-control-mini">
-                                <button class="btn-mini btn-minus" type="button" 
+                            
+                            <div class="d-flex align-items-center bg-light rounded-pill border p-1" style="height: 32px;">
+                                <button class="btn btn-link btn-sm p-0 text-muted text-decoration-none d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;" 
                                         onclick="this.nextElementSibling.stepDown(); window.gestorSalas.actualizarTotalProductos()">
-                                    <i class="fas fa-minus"></i>
+                                    <i class="fas fa-minus fa-xs"></i>
                                 </button>
-                                <input type="number" class="cantidad-input-mini" 
+                                <input type="number" class="form-control form-control-sm border-0 bg-transparent text-center p-0 fw-bold mx-1" 
+                                       style="width: 30px; height: 24px;"
                                        min="0" max="${producto.stock}" value="0" 
                                        data-producto-id="${producto.id}"
                                        data-precio="${producto.precio}"
@@ -3202,9 +3114,9 @@ class GestorSalas {
                                        data-stock="${producto.stock}"
                                        onchange="window.gestorSalas.actualizarTotalProductos()"
                                        oninput="window.gestorSalas.validarCantidadProducto(this)">
-                                <button class="btn-mini btn-plus" type="button"
+                                <button class="btn btn-link btn-sm p-0 text-primary text-decoration-none d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;"
                                         onclick="this.previousElementSibling.stepUp(); window.gestorSalas.actualizarTotalProductos()">
-                                    <i class="fas fa-plus"></i>
+                                    <i class="fas fa-plus fa-xs"></i>
                                 </button>
                             </div>
                         </div>
@@ -3214,6 +3126,70 @@ class GestorSalas {
         `).join('');
 
         console.log('  - Modal de productos cargado exitosamente');
+    }
+
+    filtrarProductosModal(texto) {
+        const busqueda = texto.toLowerCase().trim();
+        const items = document.querySelectorAll('.producto-item');
+        const categorias = document.querySelectorAll('.categoria-container');
+        const btnLimpiar = document.getElementById('btnLimpiarBusqueda');
+        const listaProductos = document.getElementById('listaProductos');
+        
+        // Mostrar/ocultar botón limpiar
+        if (btnLimpiar) {
+            if (busqueda.length > 0) {
+                btnLimpiar.classList.remove('d-none');
+                btnLimpiar.style.display = 'flex'; // Asegurar display flex para centrado
+            } else {
+                btnLimpiar.classList.add('d-none');
+                btnLimpiar.style.display = 'none';
+            }
+        }
+
+        let totalVisibles = 0;
+
+        items.forEach(item => {
+            const nombre = item.dataset.nombre;
+            if (nombre.includes(busqueda)) {
+                item.classList.remove('d-none');
+                totalVisibles++;
+            } else {
+                item.classList.add('d-none');
+            }
+        });
+
+        // Ocultar categorías vacías
+        categorias.forEach(cat => {
+            const itemsVisibles = cat.querySelectorAll('.producto-item:not(.d-none)');
+            if (itemsVisibles.length === 0) {
+                cat.classList.add('d-none');
+            } else {
+                cat.classList.remove('d-none');
+            }
+        });
+
+        // Mensaje de no resultados
+        let noResultsMsg = document.getElementById('noResultsMsg');
+        if (totalVisibles === 0 && busqueda.length > 0) {
+            if (!noResultsMsg) {
+                noResultsMsg = document.createElement('div');
+                noResultsMsg.id = 'noResultsMsg';
+                noResultsMsg.className = 'text-center py-5 text-muted animate__animated animate__fadeIn';
+                noResultsMsg.innerHTML = `
+                    <div class="bg-white rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 64px; height: 64px;">
+                        <i class="fas fa-search fa-lg text-secondary opacity-50"></i>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">No encontrado</h6>
+                    <p class="small text-muted mb-0">No hay productos que coincidan con "${texto}"</p>
+                `;
+                listaProductos.appendChild(noResultsMsg);
+            } else {
+                noResultsMsg.querySelector('p').textContent = `No hay productos que coincidan con "${texto}"`;
+                noResultsMsg.classList.remove('d-none');
+            }
+        } else if (noResultsMsg) {
+            noResultsMsg.classList.add('d-none');
+        }
     }
 
     validarCantidadProducto(input) {

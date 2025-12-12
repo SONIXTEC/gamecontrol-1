@@ -3,6 +3,19 @@
  * Muestra información real del sistema con diseño limpio y moderno
  */
 
+console.log('📦 Cargando notifications.js...');
+
+// Función global para agregar notificaciones (exportar INMEDIATAMENTE)
+window.mostrarNotificacion = function(message, type = 'info', title = 'Sistema') {
+    if (window.notificationSystem) {
+        window.notificationSystem.addNotification(type, title, message);
+    } else {
+        // Fallback si el sistema aún no está listo
+        console.log(`[${type.toUpperCase()}] ${title}: ${message}`);
+    }
+};
+console.log('✅ window.mostrarNotificacion exportado');
+
 class NotificationSystem {
     constructor() {
         this.notifications = [];
@@ -459,16 +472,9 @@ class NotificationSystem {
 }
 
 // Inicializar sistema de notificaciones
-let notificationSystem;
-
 document.addEventListener('DOMContentLoaded', () => {
-        notificationSystem = new NotificationSystem();
-    notificationSystem.loadStoredNotifications();
+    console.log('📢 Inicializando NotificationSystem...');
+    window.notificationSystem = new NotificationSystem();
+    window.notificationSystem.loadStoredNotifications();
+    console.log('✅ NotificationSystem inicializado');
 });
-
-// Función global para agregar notificaciones
-window.mostrarNotificacion = function(message, type = 'info', title = 'Sistema') {
-    if (notificationSystem) {
-        notificationSystem.addNotification(type, title, message);
-    }
-};

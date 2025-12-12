@@ -362,7 +362,8 @@ async function inicializarSalasDefault() {
 async function verificarConexionSupabase() {
     try {
         if (!window.supabaseConfig) {
-            throw new Error('Supabase config no disponible');
+            console.warn('⚠️ Supabase config no disponible aún');
+            return false; // No lanzar error, solo retornar false
         }
 
         const estado = await window.supabaseConfig.verificarEstadoConexion();
@@ -374,12 +375,12 @@ async function verificarConexionSupabase() {
             return true;
         }
         
-        throw new Error('No hay conexión a Supabase');
+        console.warn('⚠️ No hay conexión a Supabase - continuando sin BD online');
+        return false; // No lanzar error, permitir continuar
 
     } catch (error) {
-        console.error('❌ Error verificando conexión:', error);
-        mostrarErrorConexion();
-        return false;
+        console.warn('⚠️ Error verificando conexión:', error.message);
+        return false; // No mostrar error al usuario, permitir continuar
     }
 }
 
@@ -585,7 +586,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         // Inicializar componentes de UI
-        inicializarMenuMovil();
+        // inicializarMenuMovil(); // Deshabilitado - ahora se maneja en cada página
         optimizarResponsivo();
         
         // Inicializar gráficos si estamos en el dashboard

@@ -3,6 +3,8 @@
  * Conexión con la base de datos PostgreSQL
  */
 
+console.log('📦 Cargando supabase-config.js...');
+
 // ===================================================================
 // CONFIGURACIÓN DE SUPABASE
 // ===================================================================
@@ -30,9 +32,58 @@ const SUPABASE_CONFIG = {
 
 let supabaseClient = null;
 let initializationPromise = null;
+let fallbackAttempted = false; // Evitar múltiples cargas del script
+let connectionCheckScheduled = false; // Evitar múltiples verificaciones concurrentes
+let connectionBackoffMs = 3000; // Backoff inicial
+const connectionBackoffMax = 30000; // Límite de backoff
+
+// Intenta cargar el script de Supabase desde un CDN confiable (UMD) o ESM como fallback
+async function loadSupabaseScriptFallback() {
+    if (fallbackAttempted) return Promise.resolve(true);
+    fallbackAttempted = true;
+    return new Promise((resolve, reject) => {
+        try {
+            // Evitar cargar dos veces si ya está disponible de forma válida
+            const hasValidGlobal = (
+                (window.supabase && typeof window.supabase.createClient === 'function') ||
+                (typeof createClient === 'function')
+            );
+            if (hasValidGlobal) return resolve(true);
+
+            // Preferir UMD explícito (garantiza window.supabase)
+            const umdUrl = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js';
+            const alreadyLoaded = Array.from(document.scripts).some(s => (s.src || '').includes('dist/umd/supabase'));
+            if (!alreadyLoaded) {
+                const s = document.createElement('script');
+                s.src = umdUrl;
+                s.async = true;
+                s.onload = () => resolve(true);
+                s.onerror = () => {
+                    // Como último recurso, intentar ESM dinámico
+                    try {
+                        import('https://esm.sh/@supabase/supabase-js@2?bundle').then(mod => {
+                            // Exponer createClient si no existe global
+                            if (mod && typeof mod.createClient === 'function' && typeof window.createClient !== 'function') {
+                                window.createClient = mod.createClient;
+                            }
+                            resolve(true);
+                        }).catch(err => reject(err));
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                document.head.appendChild(s);
+            } else {
+                resolve(true);
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
 
 // Función para esperar a que Supabase esté disponible
-function waitForSupabase(maxAttempts = 50) {
+function waitForSupabase(maxAttempts = 60) {
     return new Promise((resolve, reject) => {
         let attempts = 0;
         
@@ -41,23 +92,28 @@ function waitForSupabase(maxAttempts = 50) {
             
             // Verificar diferentes formas de acceder a createClient
             let createClientFunction = null;
-            
-            if (typeof createClient !== 'undefined') {
+
+            if (typeof createClient === 'function') {
                 createClientFunction = createClient;
-            } else if (typeof supabase !== 'undefined' && supabase.createClient) {
+            } else if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
                 createClientFunction = supabase.createClient;
-            } else if (window.supabase && window.supabase.createClient) {
+            } else if (window.supabase && typeof window.supabase.createClient === 'function') {
                 createClientFunction = window.supabase.createClient;
             }
-            
-            if (createClientFunction) {
+
+            if (typeof createClientFunction === 'function') {
                 console.log('✅ Supabase detectado después de', attempts, 'intentos');
                 resolve(createClientFunction);
+            } else if (attempts === Math.floor(maxAttempts / 2)) {
+                // A mitad de los intentos, intentar cargar fallback de CDN
+                console.warn('⚠️ No se detecta Supabase aún, intentando cargar CDN alternativo...');
+                loadSupabaseScriptFallback().catch(() => {/* noop */});
+                setTimeout(checkSupabase, 250);
             } else if (attempts >= maxAttempts) {
                 console.error('❌ Supabase no disponible después de', maxAttempts, 'intentos');
                 reject(new Error('Supabase no está disponible'));
             } else {
-                setTimeout(checkSupabase, 100);
+                setTimeout(checkSupabase, 250);
             }
         };
         
@@ -71,10 +127,32 @@ async function initializeSupabase() {
         console.log('🔄 Inicializando Supabase...');
         
         // Esperar a que Supabase esté disponible
-        const createClientFunction = await waitForSupabase();
-        
+        let createClientFunction = null;
+        try {
+            createClientFunction = await waitForSupabase();
+        } catch (_) {}
+
+        // Fallback defensivo si la espera devolvió algo inesperado
+        if (typeof createClientFunction !== 'function') {
+            if (window.supabase && typeof window.supabase.createClient === 'function') {
+                createClientFunction = window.supabase.createClient;
+            } else if (typeof window.createClient === 'function') {
+                createClientFunction = window.createClient;
+            } else if (typeof createClient === 'function') {
+                createClientFunction = createClient;
+            }
+        }
+
+        if (typeof createClientFunction !== 'function') {
+            throw new Error('createClientFunction no es una función después de la detección');
+        }
+
         // Crear cliente de Supabase
-        supabaseClient = createClientFunction(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, SUPABASE_CONFIG.options);
+        supabaseClient = createClientFunction(
+            SUPABASE_CONFIG.url,
+            SUPABASE_CONFIG.anonKey,
+            SUPABASE_CONFIG.options
+        );
         
         console.log('✅ Supabase inicializado correctamente');
         console.log('🔗 URL:', SUPABASE_CONFIG.url);
@@ -82,6 +160,10 @@ async function initializeSupabase() {
         return supabaseClient;
     } catch (error) {
         console.error('❌ Error inicializando Supabase:', error);
+        // Evitar overlays innecesarios si estamos en login con banderas para no saturar
+        if (!window.SUPABASE_SKIP_CONNECTION_POLL && !window.SUPABASE_SKIP_AUTO_INIT) {
+            try { mostrarOverlayError(); } catch (_) {}
+        }
         return null;
     }
 }
@@ -92,7 +174,13 @@ async function getSupabaseClient() {
         if (!initializationPromise) {
             initializationPromise = initializeSupabase();
         }
-        supabaseClient = await initializationPromise;
+        const result = await initializationPromise;
+        if (!result) {
+            // Inicialización fallida: limpiar promesa para permitir reintentos posteriores
+            initializationPromise = null;
+            return null;
+        }
+        supabaseClient = result;
     }
     return supabaseClient;
 }
@@ -104,6 +192,17 @@ function getSupabaseClientSync() {
         return initializeSupabase();
     }
     return supabaseClient;
+}
+
+// Crear un cliente temporal sin persistir sesión (para operaciones puntuales)
+async function createTempClient(optionsOverride = {}) {
+    const createClientFunction = await waitForSupabase();
+    const options = Object.assign({}, SUPABASE_CONFIG.options, optionsOverride);
+    return createClientFunction(
+        SUPABASE_CONFIG.url,
+        SUPABASE_CONFIG.anonKey,
+        options
+    );
 }
 
 // ===================================================================
@@ -205,9 +304,24 @@ let connectionAttempts = 0;
 const MAX_CONNECTION_ATTEMPTS = 5;
 
 async function verificarEstadoConexion() {
+    if (window.SUPABASE_SKIP_CONNECTION_POLL) {
+        console.log('⏸️ Poll de conexión deshabilitado por configuración global');
+        return true;
+    }
+    if (connectionCheckScheduled) {
+        return false; // ya hay una verificación en curso o programada
+    }
+    connectionCheckScheduled = true;
     try {
         console.log('🔍 Verificando estado de conexión...');
         
+        // Asegurar cliente antes de verificar
+        let client = await getSupabaseClient();
+        if (!client) {
+            console.warn('⚠️ Cliente no disponible; reintentando inicialización...');
+            client = await getSupabaseClient();
+        }
+
         const resultado = await verificarConexion();
         
         if (resultado.success) {
@@ -219,6 +333,8 @@ async function verificarEstadoConexion() {
                 clearInterval(connectionCheckInterval);
                 connectionCheckInterval = null;
             }
+            connectionBackoffMs = 3000; // reset backoff al éxito
+            connectionCheckScheduled = false;
             
             return true;
         } else {
@@ -227,17 +343,24 @@ async function verificarEstadoConexion() {
             
             if (connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
                 console.error('❌ Error de conexión (Intento 5/5)');
-                // En producción, evitar bloquear por completo si hay conectividad parcial
+                // Detener los reintentos automáticos hasta interacción del usuario
+                connectionCheckScheduled = false;
                 return false;
             }
             
-            // Reintentar en 3 segundos
-            console.log('🔄 Reintentando conexión en 3 segundos...');
-            setTimeout(verificarEstadoConexion, 3000);
+            // Reintentar con backoff exponencial controlado
+            const nextDelay = Math.min(connectionBackoffMs, connectionBackoffMax);
+            console.log(`🔄 Reintentando conexión en ${Math.floor(nextDelay/1000)}s...`);
+            setTimeout(async () => {
+                connectionCheckScheduled = false;
+                connectionBackoffMs = Math.min(connectionBackoffMs * 2, connectionBackoffMax);
+                await verificarEstadoConexion();
+            }, nextDelay);
             return false;
         }
     } catch (error) {
         console.error('❌ Error verificando estado de conexión:', error);
+        connectionCheckScheduled = false;
         return false;
     }
 }
@@ -297,19 +420,24 @@ function mostrarOverlayError() {
 
 // Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', async () => {
+    if (window.SUPABASE_SKIP_AUTO_INIT) {
+        console.log('⏸️ Auto-inicialización de Supabase deshabilitada por configuración global');
+        return;
+    }
     console.log('🚀 Inicializando configuración de Supabase...');
-    
     try {
-        // Inicializar Supabase
+        // Inicializar Supabase (una sola vez gracias a initializationPromise)
         await getSupabaseClient();
-        
-        // Verificar conexión
-        await verificarEstadoConexion();
-        
-        console.log('✅ Configuración de Supabase completada');
+        // Verificar conexión pero no bloquear si falla
+        try {
+            await verificarEstadoConexion();
+            console.log('✅ Configuración de Supabase completada');
+        } catch (connError) {
+            console.warn('⚠️ Conexión a Supabase no disponible, continuando offline');
+        }
     } catch (error) {
-        console.error('❌ Error en inicialización:', error);
-        mostrarErrorConexion();
+        console.warn('⚠️ Error en inicialización de Supabase:', error.message);
+        // No mostrar overlay de error, permitir que la app continúe
     }
 });
 
@@ -346,6 +474,7 @@ if (typeof module !== 'undefined' && module.exports) {
         initializeSupabase,
         getSupabaseClient,
         getSupabaseClientSync,
+        createTempClient,
         verificarConexion,
         handleSupabaseError,
         handleSupabaseSuccess,
@@ -361,6 +490,7 @@ window.supabaseConfig = {
     initializeSupabase,
     getSupabaseClient,
     getSupabaseClientSync,
+    createTempClient,
     verificarConexion,
     verificarEstadoConexion,
     handleSupabaseError,

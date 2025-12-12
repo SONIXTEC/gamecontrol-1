@@ -4,6 +4,8 @@
  * NO USA localStorage - Solo base de datos online
  */
 
+console.log('📦 Cargando database-service.js...');
+
 // ===================================================================
 // SERVICIO PRINCIPAL DE BASE DE DATOS - SOLO SUPABASE
 // ===================================================================
@@ -28,12 +30,16 @@ class DatabaseService {
 
     // Inicializar el servicio
     async inicializar() {
+        console.log('🔧 Inicializando DatabaseService...');
         if (typeof window !== 'undefined' && window.supabaseConfig) {
             try {
                 this.client = await window.supabaseConfig.getSupabaseClient();
+                console.log('✅ DatabaseService: Cliente Supabase obtenido');
             } catch (error) {
-                console.error('Error inicializando DatabaseService:', error);
+                console.error('❌ Error inicializando DatabaseService:', error);
             }
+        } else {
+            console.warn('⚠️ DatabaseService: supabaseConfig no disponible aún');
         }
     }
 
@@ -401,9 +407,14 @@ class DatabaseService {
 // INSTANCIA GLOBAL DEL SERVICIO
 // ===================================================================
 
+console.log('🔧 Creando instancia de DatabaseService...');
 const databaseService = new DatabaseService();
+console.log('✅ Instancia de DatabaseService creada');
 
 // Exportar para uso global
 if (typeof window !== 'undefined') {
     window.databaseService = databaseService;
+    console.log('✅ database-service.js: databaseService exportado a window');
+} else {
+    console.error('❌ database-service.js: window no disponible');
 } 

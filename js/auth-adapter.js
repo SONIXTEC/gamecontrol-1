@@ -139,19 +139,38 @@ class AuthAdapter {
         try {
             if (this.db && !this.modoLocal) {
                 console.log('👤 Creando usuario en Supabase...');
-                
-                const resultado = await this.db.insert('usuarios', {
-                    nombre: datosUsuario.nombre,
-                    email: datosUsuario.email,
-                    password_hash: datosUsuario.password, // En producción usar hash
-                    rol: datosUsuario.rol,
-                    estado: 'activo',
-                    permisos: datosUsuario.permisos
+                const client = await this.db.getClient();
+                const { data, error } = await client.rpc('crear_usuario', {
+                    p_nombre: datosUsuario.nombre,
+                    p_email: datosUsuario.email,
+                    p_password: datosUsuario.password,
+                    p_rol: datosUsuario.rol,
+                    p_permisos: datosUsuario.permisos
                 });
 
-                if (resultado.success) {
-                    return resultado;
+                if (error) {
+                    throw error;
                 }
+
+                const created = Array.isArray(data) && data.length > 0 ? data[0] : null;
+                // Intentar también crear el usuario en Supabase Auth sin afectar sesión actual
+                try {
+                    if (window.supabaseConfig && typeof window.supabaseConfig.createTempClient === 'function') {
+                        const tempClient = await window.supabaseConfig.createTempClient({
+                            auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+                        });
+                        const { error: signUpError } = await tempClient.auth.signUp({
+                            email: datosUsuario.email,
+                            password: datosUsuario.password
+                        });
+                        if (signUpError) {
+                            console.warn('⚠️ No se pudo registrar en Supabase Auth (continuando):', signUpError.message || signUpError);
+                        }
+                    }
+                } catch (authErr) {
+                    console.warn('⚠️ Error creando usuario en Supabase Auth (no bloqueante):', authErr);
+                }
+                return { success: true, data: created };
             }
 
             // Fallback local
@@ -209,13 +228,13 @@ class AuthAdapter {
                     // No sincronizar el usuario demo principal
                     console.log(`📤 Sincronizando usuario local: ${usuarioLocal.email}`);
                     
-                    await this.db.insert('usuarios', {
-                        nombre: usuarioLocal.nombre,
-                        email: usuarioLocal.email,
-                        password_hash: usuarioLocal.password,
-                        rol: usuarioLocal.rol,
-                        estado: usuarioLocal.estado || 'activo',
-                        permisos: usuarioLocal.permisos
+                    const client = await this.db.getClient();
+                    await client.rpc('crear_usuario', {
+                        p_nombre: usuarioLocal.nombre,
+                        p_email: usuarioLocal.email,
+                        p_password: usuarioLocal.password,
+                        p_rol: usuarioLocal.rol,
+                        p_permisos: usuarioLocal.permisos
                     });
                 }
             }

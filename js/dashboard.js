@@ -4,6 +4,8 @@
  * SOLO SUPABASE - No localStorage
  */
 
+console.log('📦 Cargando dashboard.js...');
+
 class DashboardManager {
     constructor() {
         // Prevenir múltiples inicializaciones

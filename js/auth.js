@@ -1,5 +1,7 @@
 // === SISTEMA DE AUTENTICACIÓN CON SUPABASE EXCLUSIVAMENTE ===
 
+console.log('📦 Cargando auth.js...');
+
 // ===================================================================
 // CONFIGURACIÓN DE AUTENTICACIÓN
 // ===================================================================
@@ -11,7 +13,8 @@ let currentUser = null;
 // MODO BYPASS TEMPORAL (Deshabilitar login mientras se ajusta texto)
 // Cambia a false para volver a habilitar el login real
 // ================================================================
-const AUTH_BYPASS = true;
+// Establece en true para deshabilitar el login mientras se trabaja en el proyecto
+const AUTH_BYPASS = false;
 
 function getBypassUser() {
     return {
@@ -101,11 +104,35 @@ class SupabaseAuthSystem {
     // Inicializar sistema
     async init() {
         try {
-            // Obtener cliente de Supabase
-            this.client = await window.supabaseConfig?.getSupabaseClient();
+            console.log('🔍 Iniciando sistema de autenticación...');
+            
+            // Esperar a que Supabase esté disponible (máximo 10 segundos)
+            let attempts = 0;
+            const maxAttempts = 100;
+            
+            while (attempts < maxAttempts) {
+                if (window.supabaseConfig?.getSupabaseClient) {
+                    try {
+                        this.client = await window.supabaseConfig.getSupabaseClient();
+                        if (this.client) {
+                            console.log('✅ Cliente Supabase obtenido');
+                            break;
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Error obteniendo cliente:', e.message);
+                    }
+                }
+                
+                attempts++;
+                if (attempts % 10 === 0) {
+                    console.log(`⏳ Esperando Supabase... (${attempts}/${maxAttempts})`);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
             
             if (!this.client) {
-                throw new Error('Cliente Supabase no disponible');
+                throw new Error('Cliente Supabase no disponible después de 10 segundos');
             }
 
             console.log('🔐 Sistema de autenticación inicializado (Solo Supabase)');
@@ -120,8 +147,8 @@ class SupabaseAuthSystem {
             this.setupActivityTimer();
             
         } catch (error) {
-            console.error('Error inicializando autenticación:', error);
-            this.showConnectionError();
+            console.error('❌ Error inicializando autenticación:', error);
+            this.showConnectionError(error.message || error);
         }
     }
 
@@ -159,9 +186,9 @@ class SupabaseAuthSystem {
                     
                     if (horasTranscurridas <= 8) {
                         this.currentUser = sesion;
+                        console.log('✅ Sesión de localStorage válida, usuario:', sesion);
                         this.updateUserInterface();
                         this.checkPagePermissions();
-                        console.log('✅ Sesión de localStorage válida');
                         return;
                     } else {
                         console.log('⚠️ Sesión de localStorage expirada');
@@ -192,6 +219,14 @@ class SupabaseAuthSystem {
             
             if (userData) {
                 this.currentUser = userData;
+                console.log('✅ Usuario obtenido de BD:', userData);
+                
+                // Guardar en localStorage como fallback
+                localStorage.setItem('sesionActual', JSON.stringify({
+                    ...userData,
+                    fechaLogin: new Date().toISOString()
+                }));
+                
                 this.updateUserInterface();
                 this.checkPagePermissions();
             } else {
@@ -288,10 +323,32 @@ class SupabaseAuthSystem {
                 .update({ ultimo_acceso: new Date().toISOString() })
                 .eq('id', usuario.id);
 
+            // Asegurar permisos por defecto si no están definidos
+            if (!usuario.permisos || Object.keys(usuario.permisos).length === 0) {
+                console.log('⚠️ Usuario sin permisos definidos, asignando permisos por defecto');
+                usuario.permisos = {
+                    dashboard: true,
+                    salas: true,
+                    ventas: true,
+                    gastos: usuario.rol !== 'vendedor',
+                    stock: true,
+                    reportes: usuario.rol !== 'vendedor',
+                    usuarios: usuario.rol === 'administrador' || usuario.rol === 'supervisor',
+                    ajustes: usuario.rol === 'administrador' || usuario.rol === 'supervisor'
+                };
+            }
+
             this.currentUser = usuario;
+            
+            // Guardar en localStorage
+            localStorage.setItem('sesionActual', JSON.stringify({
+                ...usuario,
+                fechaLogin: new Date().toISOString()
+            }));
+            
             this.updateUserInterface();
             
-            console.log('✅ Login exitoso');
+            console.log('✅ Login exitoso para:', usuario.nombre, 'Rol:', usuario.rol);
             return {
                 success: true,
                 usuario: usuario
@@ -418,43 +475,79 @@ class SupabaseAuthSystem {
     // Verificar permisos de página
     checkPagePermissions() {
         if (AUTH_BYPASS) {
+            console.log('✅ AUTH_BYPASS activo, permitiendo acceso');
             return; // Permitir todo durante el bypass
         }
         if (!this.currentUser) {
+            console.log('❌ No hay usuario, redirigiendo a login');
             this.redirectToLogin();
             return;
         }
 
+        console.log('🔍 Verificando permisos para usuario:', this.currentUser.nombre, 'Rol:', this.currentUser.rol);
+        
         // Administradores tienen acceso total
         if (this.currentUser.rol === 'administrador') {
+            console.log('✅ Usuario es administrador, acceso completo');
             return;
         }
     
-    const paginaActual = window.location.pathname.split('/').pop();
-    const mapaPermisos = {
-        'index.html': 'dashboard',
-        'salas.html': 'salas',
-        'ventas.html': 'ventas',
-        'gastos.html': 'gastos',
-        'stock.html': 'stock',
-        'reportes.html': 'reportes',
-        'usuarios.html': 'usuarios',
-        'ajustes.html': 'ajustes'
-    };
+        const paginaActual = window.location.pathname.split('/').pop();
+        const mapaPermisos = {
+            'index.html': 'dashboard',
+            'salas.html': 'salas',
+            'ventas.html': 'ventas',
+            'gastos.html': 'gastos',
+            'stock.html': 'stock',
+            'reportes.html': 'reportes',
+            'usuarios.html': 'usuarios',
+            'ajustes.html': 'ajustes'
+        };
     
-    const permisoRequerido = mapaPermisos[paginaActual];
+        const permisoRequerido = mapaPermisos[paginaActual];
         const permisos = this.currentUser.permisos || {};
+        
+        console.log('📄 Página actual:', paginaActual);
+        console.log('🔑 Permiso requerido:', permisoRequerido);
+        console.log('📋 Permisos del usuario:', permisos);
 
-        if (permisoRequerido && !permisos[permisoRequerido]) {
+        // Si no hay permiso requerido o el usuario tiene el permiso, permitir acceso
+        if (!permisoRequerido || permisos[permisoRequerido]) {
+            console.log('✅ Acceso permitido');
+            return;
+        }
+        
+        // Si el permiso está explícitamente en false, denegar
+        if (permisos[permisoRequerido] === false) {
+            console.log('❌ Acceso denegado explícitamente');
             alert('No tienes permisos para acceder a esta página.\n\nContacta al administrador si necesitas acceso.');
             try {
-                const indexPath = (window.navigationUtils && window.navigationUtils.getIndexPath)
-                    ? window.navigationUtils.getIndexPath()
-                    : (window.location.pathname.includes('/pages/') ? '../index.html' : 'index.html');
-                window.location.href = indexPath;
+                // Si está en index.html y no tiene permiso, ir a la primera página permitida
+                if (paginaActual === 'index.html') {
+                    // Buscar primera página con permiso
+                    for (const [pagina, permiso] of Object.entries(mapaPermisos)) {
+                        if (permisos[permiso]) {
+                            console.log('🔄 Redirigiendo a primera página permitida:', pagina);
+                            window.location.href = window.location.pathname.includes('/pages/') ? pagina : `pages/${pagina}`;
+                            return;
+                        }
+                    }
+                    // Si no tiene ningún permiso, hacer logout
+                    console.log('❌ Usuario sin permisos, cerrando sesión');
+                    this.logout();
+                } else {
+                    // Si está en otra página, volver a index
+                    const indexPath = (window.navigationUtils && window.navigationUtils.getIndexPath)
+                        ? window.navigationUtils.getIndexPath()
+                        : (window.location.pathname.includes('/pages/') ? '../index.html' : 'index.html');
+                    window.location.href = indexPath;
+                }
             } catch (_) {
                 window.location.href = 'index.html';
             }
+        } else {
+            // Si el permiso no está definido, permitir acceso por defecto para supervisores y operadores
+            console.log('⚠️ Permiso no definido, permitiendo acceso por defecto');
         }
     }
 
@@ -538,7 +631,7 @@ class SupabaseAuthSystem {
     }
 
     // Mostrar error de conexión
-    showConnectionError() {
+    showConnectionError(details = '') {
         const overlay = document.createElement('div');
         overlay.style.cssText = `
             position: fixed;
@@ -563,6 +656,7 @@ class SupabaseAuthSystem {
                     No se puede conectar con el sistema de autenticación.<br>
                     Verifica tu conexión a internet.
                 </p>
+                ${details ? `<p style="color: #ffaaaa; font-size: 14px; margin-bottom: 20px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px;">${details}</p>` : ''}
                 <button onclick="window.location.reload()" 
                         style="background: #007bff; color: white; border: none; 
                                padding: 12px 24px; border-radius: 5px; 
@@ -731,7 +825,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('✅ Supabase config disponible, creando sessionManager...');
                 sessionManager = new SupabaseAuthSystem();
                 window.sessionManager = sessionManager; // Para acceso global
-                console.log('✅ sessionManager creado exitosamente');
+                window.authSystem = sessionManager; // Alias adicional
+                console.log('✅ sessionManager creado y exportado a window');
+                console.log('✅ authSystem creado y exportado a window');
             } else if (attempts < maxAttempts) {
                 console.log(`⏳ Esperando Supabase config... (intento ${attempts}/${maxAttempts})`);
                 setTimeout(initAuth, 100);

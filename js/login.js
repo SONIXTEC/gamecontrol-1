@@ -5,92 +5,92 @@
 // ===================================================================
 
 let authSystem = null;
+// === GESTIÓN DE AUTENTICACIÓN CON SUPABASE EXCLUSIVAMENTE ===
+
+// ===================================================================
+// CONFIGURACIÓN DE LOGIN
+// ===================================================================
+
+let authSystem = null;
 let loginInProgress = false;
 
 // ===================================================================
 // INICIALIZACIÓN DEL SISTEMA DE LOGIN
 // ===================================================================
 
-// Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🔐 Inicializando sistema de login...');
-    
+
     try {
         // Esperar a que Supabase esté disponible
         await waitForSupabase();
-        
+
         // Verificar sesión existente
         await verificarSesionExistente();
-        
-        // Configurar formulario de login
+
+        // Configurar formulario y eventos
         configurarFormularioLogin();
-        
-        // Configurar eventos
         configurarEventos();
-        
+
         // Mostrar información del sistema
         mostrarInformacionSistema();
-        
+
         console.log('✅ Sistema de login inicializado correctamente');
-        
     } catch (error) {
         console.error('❌ Error inicializando login:', error);
         mostrarErrorConexion();
     }
 });
 
-// Esperar a que Supabase esté disponible
+// ===================================================================
+// ESPERAR SUPABASE
+// ===================================================================
+
 async function waitForSupabase() {
-    try {
-        // Usar la nueva función asíncrona de supabase-config.js
-        if (window.supabaseConfig && window.supabaseConfig.getSupabaseClient) {
+    // Usar la función asíncrona de supabase-config.js si existe
+    if (window.supabaseConfig && typeof window.supabaseConfig.getSupabaseClient === 'function') {
+        await window.supabaseConfig.getSupabaseClient();
+        return;
+    }
+
+    // Fallback: esperar hasta 4 segundos
+    let attempts = 0;
+    const maxAttempts = 20;
+    while (attempts < maxAttempts) {
+        if (window.supabaseConfig && typeof window.supabaseConfig.getSupabaseClient === 'function') {
             await window.supabaseConfig.getSupabaseClient();
             return;
         }
-        
-        // Fallback: esperar hasta 4 segundos
-        let attempts = 0;
-        const maxAttempts = 20;
-        
-        while (attempts < maxAttempts) {
-            if (window.supabaseConfig && window.supabaseConfig.getSupabaseClient) {
-                await window.supabaseConfig.getSupabaseClient();
-                return;
-            }
-            await new Promise(resolve => setTimeout(resolve, 200));
-            attempts++;
-        }
-        
-        throw new Error('Supabase no está disponible después de 4 segundos');
-    } catch (error) {
-        console.error('Error esperando Supabase:', error);
-        throw error;
+        await new Promise((r) => setTimeout(r, 200));
+        attempts++;
     }
+    throw new Error('Supabase no está disponible después de 4 segundos');
 }
 
 // ===================================================================
-// VERIFICACIÓN DE SESIÓN EXISTENTE
+// VERIFICAR SESIÓN EXISTENTE
 // ===================================================================
 
 async function verificarSesionExistente() {
     try {
         const client = await window.supabaseConfig.getSupabaseClient();
         const { data: { session }, error } = await client.auth.getSession();
-        
+
         if (error) {
             console.error('Error verificando sesión:', error);
             return;
         }
-        
+
         if (session) {
             console.log('✅ Sesión activa encontrada, redirigiendo...');
             mostrarAlerta('info', 'Ya tienes una sesión activa. Redirigiendo...');
-            
             setTimeout(() => {
-                window.location.href = 'index.html';
-            }, 1000);
-        } else {
-            console.log('ℹ️ No hay sesión activa, mostrando login');
+                if (window.navigationUtils && typeof window.navigationUtils.loginSuccess === 'function') {
+                    window.navigationUtils.loginSuccess();
+                } else {
+                    window.location.href = 'index.html';
+                }
+            }, 800);
         }
     } catch (error) {
         console.error('Error verificando sesión existente:', error);
@@ -98,43 +98,32 @@ async function verificarSesionExistente() {
 }
 
 // ===================================================================
-// CONFIGURACIÓN DEL FORMULARIO
+// CONFIGURACIÓN DEL FORMULARIO Y EVENTOS
 // ===================================================================
 
 function configurarFormularioLogin() {
     // Pre-llenar credenciales para desarrollo (solo en localhost)
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
         const emailField = document.getElementById('email');
         const passwordField = document.getElementById('password');
-        
         if (emailField && passwordField) {
             emailField.value = 'maurochica23@gmail.com';
             passwordField.value = 'kennia23';
-            
-            // Mostrar nota de desarrollo
             mostrarAlerta('info', 'Modo desarrollo: Credenciales pre-llenadas');
         }
     }
 }
 
-// ===================================================================
-// GESTIÓN DE EVENTOS
-// ===================================================================
-
 function configurarEventos() {
-    // Formulario de login
     const loginForm = document.getElementById('loginForm');
-    if (loginForm) {
-        loginForm.addEventListener('submit', manejarLogin);
-    }
-    
-    // Botón de mostrar/ocultar contraseña
+    if (loginForm) loginForm.addEventListener('submit', manejarLogin);
+
     const togglePassword = document.querySelector('.toggle-password');
     if (togglePassword) {
         togglePassword.addEventListener('click', () => {
             const passwordField = document.getElementById('password');
             const icon = togglePassword.querySelector('i');
-            
+            if (!passwordField || !icon) return;
             if (passwordField.type === 'password') {
                 passwordField.type = 'text';
                 icon.classList.remove('fa-eye');
@@ -146,15 +135,12 @@ function configurarEventos() {
             }
         });
     }
-    
-    // Enter en campos de input
-    ['email', 'password'].forEach(fieldId => {
-        const field = document.getElementById(fieldId);
+
+    ;['email', 'password'].forEach((id) => {
+        const field = document.getElementById(id);
         if (field) {
             field.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    manejarLogin(e);
-                }
+                if (e.key === 'Enter') manejarLogin(e);
             });
         }
     });
@@ -166,54 +152,46 @@ function configurarEventos() {
 
 async function manejarLogin(e) {
     e.preventDefault();
-    
-    if (loginInProgress) {
-        return; // Evitar doble envío
-    }
-    
+    if (loginInProgress) return;
     loginInProgress = true;
-    
+
     const emailField = document.getElementById('email');
     const passwordField = document.getElementById('password');
     const loginButton = document.querySelector('#loginForm button[type="submit"]');
-    
-    const email = emailField.value.trim();
-    const password = passwordField.value;
-    
-    // Validaciones básicas
+
+    const email = (emailField?.value || '').trim();
+    const password = passwordField?.value || '';
+
     if (!email || !password) {
         mostrarAlerta('error', 'Por favor, completa todos los campos');
         loginInProgress = false;
         return;
     }
-    
-    // Validar formato de email
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         mostrarAlerta('error', 'Por favor, ingresa un email válido');
         loginInProgress = false;
         return;
     }
-    
+
     try {
-        // Mostrar estado de carga
         mostrarEstadoCarga(true, loginButton);
-        
-        // Autenticar con Supabase
+
         const resultado = await autenticarConSupabase(email, password);
-        
+
         if (resultado.success) {
             mostrarAlerta('success', `¡Bienvenido ${resultado.usuario.nombre}!`);
-            
-            // Redirigir después de un momento
             setTimeout(() => {
-                window.location.href = 'index.html';
-            }, 1000);
-            
+                if (window.navigationUtils && typeof window.navigationUtils.loginSuccess === 'function') {
+                    window.navigationUtils.loginSuccess();
+                } else {
+                    window.location.href = 'index.html';
+                }
+            }, 800);
         } else {
             mostrarAlerta('error', resultado.error || 'Error de autenticación');
         }
-        
     } catch (error) {
         console.error('Error en login:', error);
         mostrarAlerta('error', 'Error de conexión. Verifica tu internet.');
@@ -230,67 +208,174 @@ async function manejarLogin(e) {
 async function autenticarConSupabase(email, password) {
     try {
         const client = await window.supabaseConfig.getSupabaseClient();
-        
-        // Usar el servicio de base de datos para autenticar
-        if (window.databaseService) {
-            return await window.databaseService.autenticarUsuario(email, password);
-        }
-        
-        // Fallback: autenticación directa
-        // Evitar RLS recursivo: usamos RPC auth_login que valida y devuelve datos mínimos
-        const { data: authUserRows, error: rpcError } = await client
-            .rpc('auth_login_v2', { p_email: email, p_password: password });
 
-        const usuario = Array.isArray(authUserRows) ? authUserRows[0] : null;
+        console.log('🔐 Intentando autenticación para:', email);
+
+        // 1) Verificar primero en la tabla usuarios
+        let usuario = null;
+        try {
+            const { data: usuariosData, error: usuariosError } = await client
+                .from('usuarios')
+                .select('*')
+                .eq('email', email)
+                .eq('estado', 'activo')
+                .single();
+
+            if (!usuariosError && usuariosData) {
+                console.log('✅ Usuario encontrado en tabla usuarios');
+                
+                // Verificar contraseña usando la función RPC
+                try {
+                    const { data: passwordValid, error: passError } = await client
+                        .rpc('verificar_password', {
+                            password: password,
+                            hash: usuariosData.password_hash
+                        });
+
+                    if (!passError && passwordValid) {
+                        console.log('✅ Contraseña verificada correctamente');
+                        usuario = usuariosData;
+                    } else {
+                        console.log('❌ Contraseña incorrecta');
+                        return { success: false, error: 'Contraseña incorrecta' };
+                    }
+                } catch (passErr) {
+                    console.warn('⚠️ Función verificar_password no disponible, intentando auth directo');
+                    // Fallback: intentar con Supabase Auth directamente
+                }
+            }
+        } catch (err) {
+            console.warn('⚠️ Error verificando en tabla usuarios:', err);
+        }
+
+        // 2) Si no se encontró en tabla o no se pudo verificar, intentar RPC auth_login_v2
+        if (!usuario) {
+            try {
+                const { data: authUserRows, error: rpcError } = await client.rpc('auth_login_v2', { 
+                    p_email: email, 
+                    p_password: password 
+                });
+                
+                if (!rpcError && authUserRows) {
+                    usuario = Array.isArray(authUserRows) ? authUserRows[0] : authUserRows;
+                    if (usuario) {
+                        console.log('✅ Usuario autenticado via RPC auth_login_v2');
+                    }
+                }
+            } catch (rpcErr) {
+                console.warn('⚠️ RPC auth_login_v2 no disponible:', rpcErr.message);
+            }
+        }
+
+        // 3) Si aún no hay usuario, verificar en Supabase Auth + tabla usuarios
+        if (!usuario) {
+            try {
+                const { data: authData, error: authError } = await client.auth.signInWithPassword({ 
+                    email, 
+                    password 
+                });
+
+                if (!authError && authData?.user) {
+                    console.log('✅ Usuario autenticado en Supabase Auth');
+                    
+                    // Buscar datos completos en tabla usuarios
+                    const { data: userData } = await client
+                        .from('usuarios')
+                        .select('*')
+                        .eq('email', email)
+                        .single();
+
+                    if (userData) {
+                        usuario = userData;
+                    } else {
+                        // Crear usuario en tabla si solo existe en Auth
+                        const adminEmails = ['maurochica23@gmail.com', 'admin@gamecontrol.com', 'admin@sonixtec.co'];
+                        const esAdmin = adminEmails.includes(String(email).toLowerCase());
+                        const rolAsignado = esAdmin ? 'administrador' : 'operador';
+                        const permisosPorRol = (rol) => {
+                            if (rol === 'administrador') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: true, ajustes: true };
+                            if (rol === 'supervisor') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: false, ajustes: false };
+                            if (rol === 'operador') return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
+                            return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
+                        };
+
+                        console.log(`📝 Creando usuario en tabla desde Auth con rol ${rolAsignado}`);
+                        const { data: nuevoUsuario } = await client
+                            .from('usuarios')
+                            .insert({
+                                email: email,
+                                nombre: email.split('@')[0],
+                                rol: rolAsignado,
+                                estado: 'activo',
+                                password_hash: 'managed_by_auth',
+                                permisos: permisosPorRol(rolAsignado)
+                            })
+                            .select()
+                            .single();
+                        
+                        usuario = nuevoUsuario || { email, nombre: email.split('@')[0], rol: rolAsignado, permisos: permisosPorRol(rolAsignado) };
+                    }
+                } else {
+                    console.log('❌ Autenticación fallida:', authError?.message);
+                }
+            } catch (authErr) {
+                console.warn('⚠️ Error en Supabase Auth:', authErr);
+            }
+        }
+
         if (!usuario) {
             return { success: false, error: 'Usuario no encontrado o credenciales inválidas' };
         }
-        const sesion = {
+
+        // 4) Actualizar último acceso
+        try {
+            await client
+                .from('usuarios')
+                .update({ ultimo_acceso: new Date().toISOString() })
+                .eq('email', email);
+        } catch (updateErr) {
+            console.warn('⚠️ No se pudo actualizar último acceso');
+        }
+
+        // 5) Asegurar permisos por defecto si no están definidos
+        if (!usuario.permisos || Object.keys(usuario.permisos).length === 0) {
+            console.log('⚠️ Usuario sin permisos definidos, asignando permisos por defecto');
+            usuario.permisos = {
+                dashboard: true,
+                salas: true,
+                ventas: true,
+                gastos: usuario.rol !== 'vendedor',
+                stock: true,
+                reportes: usuario.rol !== 'vendedor',
+                usuarios: usuario.rol === 'administrador' || usuario.rol === 'supervisor',
+                ajustes: usuario.rol === 'administrador' || usuario.rol === 'supervisor'
+            };
+        }
+        
+        const sesionLocal = {
             id: usuario.id,
             nombre: usuario.nombre,
             email: usuario.correo || usuario.email,
             rol: usuario.rol,
-            permisos: usuario.permisos || {},
-            fechaLogin: new Date().toISOString()
+            permisos: usuario.permisos,
+            fechaLogin: new Date().toISOString(),
         };
+        
+        console.log('✅ Sesión creada para:', sesionLocal.nombre, 'Rol:', sesionLocal.rol, 'Permisos:', sesionLocal.permisos);
+        
+        try {
+            localStorage.setItem('sesionActual', JSON.stringify(sesionLocal));
+            localStorage.setItem('salas_current_session', JSON.stringify({
+                userId: usuario.id,
+                loginTime: new Date().toISOString(),
+                lastActivity: new Date().toISOString(),
+            }));
+        } catch (_) {}
 
-        // Ya validado por RPC
-
-        // Crear sesión en Supabase Auth
-        const { data: authData, error: authError } = await client.auth.signInWithPassword({
-            email: email,
-            password: password
-        });
-
-        if (authError) {
-            // Intentar registrar en Supabase Auth si no existe
-            const { error: signUpError } = await client.auth.signUp({
-                email: email,
-                password: password
-            });
-
-            if (signUpError && !signUpError.message.includes('already registered')) {
-                console.error('Error en signup:', signUpError);
-                return {
-                    success: false,
-                    error: 'Error en el sistema de autenticación'
-                };
-            }
-        }
-
-    // Último acceso ya lo actualiza el RPC
-
-        return {
-            success: true,
-            usuario: usuario
-        };
-
+        return { success: true, usuario };
     } catch (error) {
         console.error('Error en autenticación:', error);
-        return {
-            success: false,
-            error: 'Error de conexión'
-        };
+        return { success: false, error: 'Error de conexión' };
     }
 }
 
@@ -300,7 +385,6 @@ async function autenticarConSupabase(email, password) {
 
 function mostrarEstadoCarga(mostrar, button) {
     if (!button) return;
-    
     if (mostrar) {
         button.disabled = true;
         button.innerHTML = `
@@ -318,23 +402,11 @@ function mostrarEstadoCarga(mostrar, button) {
 function mostrarAlerta(tipo, mensaje) {
     const alertContainer = document.getElementById('alertContainer');
     if (!alertContainer) return;
-    
+
     const alertId = 'alert-' + Date.now();
-    
-    const tipoClases = {
-        'success': 'alert-success',
-        'error': 'alert-danger',
-        'warning': 'alert-warning',
-        'info': 'alert-info'
-    };
-    
-    const iconos = {
-        'success': 'fas fa-check-circle',
-        'error': 'fas fa-exclamation-triangle',
-        'warning': 'fas fa-exclamation-circle',
-        'info': 'fas fa-info-circle'
-    };
-    
+    const tipoClases = { success: 'alert-success', error: 'alert-danger', warning: 'alert-warning', info: 'alert-info' };
+    const iconos = { success: 'fas fa-check-circle', error: 'fas fa-exclamation-triangle', warning: 'fas fa-exclamation-circle', info: 'fas fa-info-circle' };
+
     const alerta = document.createElement('div');
     alerta.id = alertId;
     alerta.className = `alert ${tipoClases[tipo]} alert-dismissible fade show`;
@@ -343,43 +415,26 @@ function mostrarAlerta(tipo, mensaje) {
         ${mensaje}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    
     alertContainer.appendChild(alerta);
-    
-    // Auto-remover después de 5 segundos
-    setTimeout(() => {
-        const alertElement = document.getElementById(alertId);
-        if (alertElement) {
-            alertElement.remove();
-        }
-    }, 5000);
+    setTimeout(() => document.getElementById(alertId)?.remove(), 5000);
 }
 
 function mostrarInformacionSistema() {
     const infoContainer = document.getElementById('systemInfo');
     if (!infoContainer) return;
-    
     infoContainer.innerHTML = `
         <div class="text-center">
             <h5><i class="fas fa-cloud me-2"></i>Sistema Online</h5>
-            <p class="mb-2">
-                <i class="fas fa-database me-1"></i>
-                Base de datos: <span class="text-success">Supabase PostgreSQL</span>
-            </p>
-            <p class="mb-2">
-                <i class="fas fa-shield-alt me-1"></i>
-                Autenticación: <span class="text-success">Supabase Auth</span>
-            </p>
-            <small class="text-muted">
-                <i class="fas fa-wifi me-1"></i>
-                Requiere conexión a internet
-            </small>
-            </div>
-        `;
+            <p class="mb-2"><i class="fas fa-database me-1"></i>Base de datos: <span class="text-success">Supabase PostgreSQL</span></p>
+            <p class="mb-2"><i class="fas fa-shield-alt me-1"></i>Autenticación: <span class="text-success">Supabase Auth</span></p>
+            <small class="text-muted"><i class="fas fa-wifi me-1"></i>Requiere conexión a internet</small>
+        </div>
+    `;
 }
 
 function mostrarErrorConexion() {
-    const errorHTML = `
+    const container = document.querySelector('.login-container') || document.body;
+    container.innerHTML = `
         <div class="alert alert-danger text-center">
             <h4><i class="fas fa-exclamation-triangle me-2"></i>Error de Conexión</h4>
             <p>No se puede conectar con el servidor.</p>
@@ -389,9 +444,6 @@ function mostrarErrorConexion() {
             </button>
         </div>
     `;
-    
-    const container = document.querySelector('.login-container') || document.body;
-    container.innerHTML = errorHTML;
 }
 
 // ===================================================================

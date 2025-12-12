@@ -18,6 +18,7 @@
 - [🗄️ Base de Datos](#️-base-de-datos)
 - [📁 Estructura del Proyecto](#-estructura-del-proyecto)
 - [🔧 Configuración](#-configuración)
+ - [🧩 SDK Supabase (CDN)](#-sdk-supabase-cdn)
 - [📱 Capturas de Pantalla](#-capturas-de-pantalla)
 - [🤝 Contribución](#-contribución)
 - [📄 Licencia](#-licencia)
@@ -256,6 +257,22 @@ El sistema permite configurar:
 - Row Level Security (RLS) en Supabase
 - Validación de permisos por módulo
 - Sesiones con expiración automática
+
+---
+
+## 🧩 SDK Supabase (CDN)
+
+Para asegurar una inicialización estable del cliente en todos los navegadores, el proyecto fija la versión y el formato del SDK de Supabase a la build UMD:
+
+```
+https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js
+```
+
+- La build UMD expone `window.supabase.createClient`, que es lo que utiliza `js/supabase-config.js` al iniciar.
+- Evitamos el uso del alias genérico `https://unpkg.com/@supabase/supabase-js@2` porque no siempre garantiza un `createClient` global.
+- Si actualizas la versión, hazlo en todos los HTML que la referencian y valida con `debug_supabase_loading.html`.
+
+Además, `js/supabase-config.js` incluye un fallback que intenta cargar la build UMD y, en último caso, una versión ESM empaquetada para exponer `window.createClient` cuando sea necesario.
 
 ---
 

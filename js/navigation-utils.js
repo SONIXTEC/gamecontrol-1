@@ -185,6 +185,10 @@ class NavigationUtils {
         // Solo verificar Supabase si no hay sesión en localStorage
         if (!hasSession) {
             try {
+                if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+                    console.log('🌐 Offline detectado: omitiendo verificación de sesión en Supabase');
+                    throw new Error('Offline');
+                }
                 if (window.supabaseConfig && typeof window.supabaseConfig.getSupabaseClient === 'function') {
                     const client = await window.supabaseConfig.getSupabaseClient();
                     if (client && client.auth && typeof client.auth.getSession === 'function') {

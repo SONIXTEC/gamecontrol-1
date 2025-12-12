@@ -563,19 +563,28 @@ function optimizarNavegacionMovil() {
         lazyElements.forEach(el => observer.observe(el));
     }
     
-    // Preload páginas importantes
-    const importantLinks = document.querySelectorAll('a[href*="salas"], a[href*="ventas"]');
-    importantLinks.forEach(link => {
-        link.addEventListener('mouseenter', () => {
-            const href = link.getAttribute('href');
-            if (href && !document.querySelector(`link[href="${href}"]`)) {
-                const prefetchLink = document.createElement('link');
-                prefetchLink.rel = 'prefetch';
-                prefetchLink.href = href;
-                document.head.appendChild(prefetchLink);
-            }
-        }, { once: true });
-    });
+    // Preload páginas importantes (solo en dispositivos que soportan hover y no en táctil)
+    try {
+        if (window.matchMedia && window.matchMedia('(hover: hover)').matches) {
+            const importantLinks = document.querySelectorAll('a[href*="salas"], a[href*="ventas"]');
+            importantLinks.forEach(link => {
+                const handler = () => {
+                    const href = link.getAttribute('href');
+                    if (href && !document.querySelector(`link[href="${href}"]`)) {
+                        const prefetchLink = document.createElement('link');
+                        prefetchLink.rel = 'prefetch';
+                        prefetchLink.href = href;
+                        document.head.appendChild(prefetchLink);
+                    }
+                };
+                // Añadir prefetch en mouseenter solo en dispositivos con cursor
+                link.addEventListener('mouseenter', handler, { once: true });
+            });
+        }
+    } catch (e) {
+        // Silently ignore prefetch errors
+        console.warn('optimizarNavegacionMovil: prefetch skipped', e?.message || e);
+    }
 }
 
 // ===== AUTO-INICIALIZACIÓN =====

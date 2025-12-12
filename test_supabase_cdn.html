@@ -40,7 +40,7 @@
         // Test 1: CDN actual
         addTest('CDN Actual (unpkg.com/@supabase/supabase-js@2)', () => {
             const script = document.createElement('script');
-            script.src = 'https://unpkg.com/@supabase/supabase-js@2';
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js';
             script.onload = () => {
                 if (typeof createClient !== 'undefined') {
                     return '✅ createClient disponible';
@@ -58,7 +58,7 @@
         // Test 2: CDN alternativo
         addTest('CDN Alternativo (jsdelivr)', () => {
             const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js';
             script.onload = () => {
                 if (typeof createClient !== 'undefined') {
                     return '✅ createClient disponible';
