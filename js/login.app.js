@@ -103,34 +103,63 @@ async function waitForSupabase() {
 async function verificarSesionExistente() {
   try {
     const client = await window.supabaseConfig.getSupabaseClient();
-    const { data: { session } } = await client.auth.getSession();
-    if (session) {
-      // Actualizar mensaje del loader en lugar de mostrar alerta
-      const loaderText = document.querySelector('#initialLoader p');
-      if (loaderText) loaderText.textContent = 'Sesión encontrada. Redirigiendo...';
-      
-      // mostrarAlerta('info', 'Ya tienes una sesión activa. Redirigiendo...'); // Comentado para evitar flash de alerta
-      
-      setTimeout(() => {
-        if (window.navigationUtils?.loginSuccess) {
-          window.navigationUtils.loginSuccess();
-        } else {
-          window.location.href = 'index.html';
+    
+    // Configurar listener para cambios de estado (catch late login)
+    client.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+            console.log('🔄 Sesión detectada por evento:', event);
+            handleLoginSuccess();
         }
-      }, 800);
-      
-      // Retornar una promesa que nunca se resuelve para detener la ejecución del resto del init
-      // mientras se redirige. O lanzar una "excepción controlada".
-      // Pero mejor, simplemente dejamos que el timeout redirija.
-      // Sin embargo, el init continuará y mostrará el form. 
-      // Para evitar eso, lanzamos un error especial o retornamos true/false.
+    });
+
+    // 1. Verificar sesión actual
+    const { data: { session } } = await client.auth.getSession();
+    
+    if (session) {
+      handleLoginSuccess();
       throw new Error('REDIRECTING'); 
     }
+
+    // 2. Verificar si hay token en localStorage pero getSession falló (posible latencia)
+    // El key por defecto es sb-<project-ref>-auth-token
+    const projectRef = 'stjbtxrrdofuxhigxfcy';
+    const hasToken = localStorage.getItem(`sb-${projectRef}-auth-token`);
+    
+    if (hasToken) {
+        console.log('⏳ Token encontrado en storage, esperando posible restauración...');
+        // Dar un momento para que el listener de onAuthStateChange dispare si es válido
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Verificar de nuevo
+        const { data: { session: sessionRetry } } = await client.auth.getSession();
+        if (sessionRetry) {
+            handleLoginSuccess();
+            throw new Error('REDIRECTING');
+        }
+    }
+
   } catch (error) {
     if (error.message === 'REDIRECTING') throw error; // Propagar para detener init
     console.error('Error verificando sesión existente:', error);
     // Si hay error verificando, asumimos que no hay sesión y dejamos continuar
   }
+}
+
+function handleLoginSuccess() {
+    const loaderText = document.querySelector('#initialLoader p');
+    if (loaderText) loaderText.textContent = 'Sesión encontrada. Redirigiendo...';
+    
+    // Evitar redirecciones múltiples
+    if (window.isRedirecting) return;
+    window.isRedirecting = true;
+
+    setTimeout(() => {
+        if (window.navigationUtils?.loginSuccess) {
+            window.navigationUtils.loginSuccess();
+        } else {
+            window.location.href = 'index.html';
+        }
+    }, 500);
 }
 
 // ===================================================================
