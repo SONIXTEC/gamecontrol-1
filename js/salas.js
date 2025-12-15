@@ -4178,21 +4178,51 @@ async function inicializarSincronizacionConfiguracion() {
         const res = await window.databaseService.select('configuracion', { filtros: { id: 1 } });
         if (res.success && res.data && res.data.length > 0) {
             const remoteConfig = res.data[0].datos;
-            // Solo actualizar si es diferente para evitar loops o renders innecesarios
-            const localConfigStr = localStorage.getItem('configuracion');
-            if (JSON.stringify(remoteConfig) !== localConfigStr) {
-                localStorage.setItem('configuracion', JSON.stringify(remoteConfig));
-                console.log('✅ Configuración inicial cargada desde Supabase');
-                if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
+            
+            // Validar que la configuración remota tenga datos útiles
+            const hasValidData = remoteConfig && 
+                                 typeof remoteConfig === 'object' && 
+                                 Object.keys(remoteConfig).length > 0;
+            
+            if (hasValidData) {
+                const localConfigStr = localStorage.getItem('configuracion');
+                const localConfig = localConfigStr ? JSON.parse(localConfigStr) : {};
+                
+                // Fusionar configs: priorizar datos remotos pero mantener locales si remotos están vacíos
+                const mergedConfig = {
+                    tarifasPorSala: remoteConfig.tarifasPorSala || localConfig.tarifasPorSala || {},
+                    tiposConsola: remoteConfig.tiposConsola || localConfig.tiposConsola || {
+                        playstation: { prefijo: 'PS' },
+                        xbox: { prefijo: 'XB' },
+                        nintendo: { prefijo: 'NT' },
+                        pc: { prefijo: 'PC' }
+                    },
+                    ...remoteConfig
+                };
+                
+                if (JSON.stringify(mergedConfig) !== localConfigStr) {
+                    localStorage.setItem('configuracion', JSON.stringify(mergedConfig));
+                    console.log('✅ Configuración sincronizada desde Supabase');
+                    if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
+                }
+            } else {
+                console.log('⚠️ Configuración remota vacía o inválida, manteniendo local');
             }
         } else {
             // Si no existe configuración remota, subir la local
             console.log('⚠️ No hay configuración remota. Subiendo configuración local...');
             const localConfig = obtenerConfiguracion();
-            guardarConfiguracion(localConfig);
+            
+            // Solo subir si hay datos locales válidos
+            if (localConfig && Object.keys(localConfig.tarifasPorSala || {}).length > 0) {
+                guardarConfiguracion(localConfig);
+            } else {
+                console.log('⚠️ No hay configuración local válida para subir');
+            }
         }
     } catch (error) {
         console.error('❌ Error cargando configuración inicial:', error);
+        console.log('⚠️ Manteniendo configuración local por error en Supabase');
     }
 
     // 2. Suscribirse a cambios
@@ -4204,9 +4234,13 @@ async function inicializarSincronizacionConfiguracion() {
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'configuracion', filter: 'id=eq.1' }, payload => {
                     console.log('🔄 Cambio de configuración detectado en tiempo real', payload);
                     const newConfig = payload.new.datos;
-                    localStorage.setItem('configuracion', JSON.stringify(newConfig));
-                    if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
-                    mostrarNotificacion('Configuración actualizada en tiempo real', 'info');
+                    
+                    // Validar que la nueva configuración tenga datos
+                    if (newConfig && typeof newConfig === 'object' && Object.keys(newConfig).length > 0) {
+                        localStorage.setItem('configuracion', JSON.stringify(newConfig));
+                        if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
+                        mostrarNotificacion('Configuración actualizada en tiempo real', 'info');
+                    }
                 })
                 .subscribe();
             console.log('✅ Suscripción a cambios de configuración activa');
