@@ -31,6 +31,17 @@ function obtenerConfiguracion() {
 
 function guardarConfiguracion(config) {
     localStorage.setItem('configuracion', JSON.stringify(config));
+    
+    // Sincronizar con Supabase en segundo plano
+    if (window.databaseService) {
+        // Usamos upsert para asegurar que exista el registro id=1
+        window.databaseService.upsert('configuracion', { id: 1, datos: config })
+            .then(res => {
+                if(res.success) console.log('✅ Configuración sincronizada con Supabase');
+                else console.error('❌ Error sincronizando configuración:', res.error);
+            })
+            .catch(err => console.error('❌ Error en guardarConfiguracion:', err));
+    }
 }
 
 // Configuración global
@@ -409,6 +420,19 @@ class GestorSalas {
             console.log('🔍 Ventana vuelve a tener foco, verificando datos...');
             this.verificarIntegridadDatos();
         });
+    }
+
+    recargarConfiguracion() {
+        console.log('🔄 Recargando configuración en GestorSalas...');
+        this.config = obtenerConfiguracion();
+        this.migrarTarifasANuevoFormato();
+        this.renderizarSalas();
+        
+        // Si el modal de tarifas está abierto, actualizarlo
+        const modalTarifas = document.getElementById('modalTarifas');
+        if (modalTarifas && modalTarifas.classList.contains('show')) {
+            this.mostrarModalTarifas();
+        }
     }
     
     // ===== Alertas de tiempo cumplido =====
@@ -4140,3 +4164,60 @@ document.addEventListener('keydown', function (e) {
         }
     }
 }); 
+// ==========================================
+// SINCRONIZACIÓN DE CONFIGURACIÓN (REALTIME)
+// ==========================================
+
+async function inicializarSincronizacionConfiguracion() {
+    if (!window.databaseService) return;
+    
+    console.log('🔄 Inicializando sincronización de configuración...');
+
+    // 1. Obtener configuración inicial desde Supabase
+    try {
+        const res = await window.databaseService.select('configuracion', { filtros: { id: 1 } });
+        if (res.success && res.data && res.data.length > 0) {
+            const remoteConfig = res.data[0].datos;
+            // Solo actualizar si es diferente para evitar loops o renders innecesarios
+            const localConfigStr = localStorage.getItem('configuracion');
+            if (JSON.stringify(remoteConfig) !== localConfigStr) {
+                localStorage.setItem('configuracion', JSON.stringify(remoteConfig));
+                console.log('✅ Configuración inicial cargada desde Supabase');
+                if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
+            }
+        } else {
+            // Si no existe configuración remota, subir la local
+            console.log('⚠️ No hay configuración remota. Subiendo configuración local...');
+            const localConfig = obtenerConfiguracion();
+            guardarConfiguracion(localConfig);
+        }
+    } catch (error) {
+        console.error('❌ Error cargando configuración inicial:', error);
+    }
+
+    // 2. Suscribirse a cambios
+    try {
+        const client = window.supabaseConfig ? await window.supabaseConfig.getSupabaseClient() : null;
+        if (client) {
+            client
+                .channel('public:configuracion')
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'configuracion', filter: 'id=eq.1' }, payload => {
+                    console.log('🔄 Cambio de configuración detectado en tiempo real', payload);
+                    const newConfig = payload.new.datos;
+                    localStorage.setItem('configuracion', JSON.stringify(newConfig));
+                    if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
+                    mostrarNotificacion('Configuración actualizada en tiempo real', 'info');
+                })
+                .subscribe();
+            console.log('✅ Suscripción a cambios de configuración activa');
+        }
+    } catch (error) {
+        console.error('❌ Error suscribiendo a cambios de configuración:', error);
+    }
+}
+
+// Iniciar sincronización cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', () => {
+    // Esperar un poco para asegurar que databaseService esté listo
+    setTimeout(inicializarSincronizacionConfiguracion, 1000);
+});

@@ -27,6 +27,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Verificar sesión existente
     await verificarSesionExistente();
 
+    // Si llegamos aquí, no hay sesión activa (o verificarSesionExistente manejó la redirección)
+    // Mostrar el formulario de login
+    mostrarFormularioLogin();
+
     // Configurar formulario y eventos
     configurarFormularioLogin();
     configurarEventos();
@@ -36,10 +40,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     console.log('✅ Sistema de login inicializado correctamente');
   } catch (error) {
+    if (error.message === 'REDIRECTING') {
+        console.log('🔄 Redirigiendo a dashboard...');
+        return;
+    }
     console.error('❌ Error inicializando login:', error);
     mostrarErrorConexion();
+    // En caso de error, mostrar el formulario para permitir reintentar o ver el error
+    mostrarFormularioLogin();
   }
 });
+
+function mostrarFormularioLogin() {
+    const loader = document.getElementById('initialLoader');
+    const container = document.querySelector('.mobile-login-container');
+    
+    if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => {
+            loader.style.display = 'none';
+        }, 300);
+    }
+    
+    if (container) {
+        container.style.display = 'block';
+        // Small delay to allow display:block to apply before opacity transition
+        setTimeout(() => {
+            container.style.opacity = '1';
+        }, 50);
+    }
+}
 
 // ===================================================================
 // ESPERAR SUPABASE
@@ -75,7 +105,12 @@ async function verificarSesionExistente() {
     const client = await window.supabaseConfig.getSupabaseClient();
     const { data: { session } } = await client.auth.getSession();
     if (session) {
-      mostrarAlerta('info', 'Ya tienes una sesión activa. Redirigiendo...');
+      // Actualizar mensaje del loader en lugar de mostrar alerta
+      const loaderText = document.querySelector('#initialLoader p');
+      if (loaderText) loaderText.textContent = 'Sesión encontrada. Redirigiendo...';
+      
+      // mostrarAlerta('info', 'Ya tienes una sesión activa. Redirigiendo...'); // Comentado para evitar flash de alerta
+      
       setTimeout(() => {
         if (window.navigationUtils?.loginSuccess) {
           window.navigationUtils.loginSuccess();
@@ -83,9 +118,18 @@ async function verificarSesionExistente() {
           window.location.href = 'index.html';
         }
       }, 800);
+      
+      // Retornar una promesa que nunca se resuelve para detener la ejecución del resto del init
+      // mientras se redirige. O lanzar una "excepción controlada".
+      // Pero mejor, simplemente dejamos que el timeout redirija.
+      // Sin embargo, el init continuará y mostrará el form. 
+      // Para evitar eso, lanzamos un error especial o retornamos true/false.
+      throw new Error('REDIRECTING'); 
     }
   } catch (error) {
+    if (error.message === 'REDIRECTING') throw error; // Propagar para detener init
     console.error('Error verificando sesión existente:', error);
+    // Si hay error verificando, asumimos que no hay sesión y dejamos continuar
   }
 }
 
