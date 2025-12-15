@@ -220,7 +220,7 @@ async function verificarConexion() {
         // Prueba de PostgREST: consulta mínima
         const { data, error } = await client
             .from('configuracion')
-            .select('clave')
+            .select('id')
             .limit(1);
 
         if (error) {

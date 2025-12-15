@@ -66,7 +66,7 @@ class DatabaseService {
             const client = await this.getClient();
             const { data, error } = await client
                 .from('configuracion')
-                .select('clave')
+                .select('id')
                 .limit(1);
 
             if (error) {
@@ -291,24 +291,21 @@ class DatabaseService {
         }
     }
 
-    // Obtener configuración
-    async obtenerConfiguracion(clave = null) {
+    // Obtener configuración global (nuevo esquema: id=1, datos JSONB)
+    async obtenerConfiguracion() {
         try {
-            const opciones = {};
-            if (clave) {
-                opciones.filtros = { clave };
+            const resultado = await this.select('configuracion', {
+                filtros: { id: 1 }
+            });
+            
+            if (resultado.data && resultado.data.length > 0) {
+                return resultado.data[0].datos || {};
             }
             
-            const resultado = await this.select('configuracion', opciones);
-            
-            if (clave) {
-                return resultado.data[0] ? resultado.data[0].valor : null;
-            }
-            
-            return resultado.data;
+            return {};
         } catch (error) {
             console.error('Error obteniendo configuración:', error);
-            throw error;
+            return {};
         }
     }
 
