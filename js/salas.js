@@ -395,8 +395,8 @@ class GestorSalas {
         
         console.log('  - Configuración cargada:', this.config);
         
-        // Asegurar consistencia de tarifas: usar solo precio por hora (t60)
-        this.normalizarTarifasSoloHora();
+        // Asegurar estructura de tarifas manuales por duración (sin cálculos automáticos)
+        this.normalizarTarifasManual();
         
         // Inicializar elementos del DOM
         this.contenedorSalas = document.getElementById('contenedorSalas');
@@ -442,7 +442,7 @@ class GestorSalas {
     recargarConfiguracion() {
         console.log('🔄 Recargando configuración en GestorSalas...');
         this.config = obtenerConfiguracion();
-        this.normalizarTarifasSoloHora();
+        this.normalizarTarifasManual();
         this.renderizarSalas();
         
         // Si el modal de tarifas está abierto, actualizarlo
@@ -598,40 +598,36 @@ class GestorSalas {
         }
     }
     
-    normalizarTarifasSoloHora() {
+    normalizarTarifasManual() {
         if (!this.config) this.config = {};
         if (!this.config.tarifasPorSala) this.config.tarifasPorSala = {};
         let cambios = false;
         for (const salaId in this.config.tarifasPorSala) {
             const valor = this.config.tarifasPorSala[salaId];
-            if (valor && typeof valor === 'object') {
-                // Si viene en formato diferenciado, reducir a número usando t60
-                const t60 = Number(valor.t60) || 0;
-                this.config.tarifasPorSala[salaId] = t60;
+            if (typeof valor === 'number') {
+                // Convertir número previo a estructura manual mínima
+                this.config.tarifasPorSala[salaId] = { t60: Number(valor) || 0 };
                 cambios = true;
-            } else if (typeof valor !== 'number') {
-                // Limpiar valores inválidos
-                this.config.tarifasPorSala[salaId] = 0;
+            } else if (!valor || typeof valor !== 'object') {
+                this.config.tarifasPorSala[salaId] = { t60: 0 };
                 cambios = true;
             }
         }
         if (cambios) guardarConfiguracion(this.config);
     }
 
-    // Construye un objeto de tarifas solo para UI a partir del precio/hora guardado
-    _tarifasUIDesdeHora(sala) {
-        // Tomar hora desde config si existe, si no desde sala, si no 0
-        const hora = (() => {
-            const v = (this.config?.tarifasPorSala?.[sala.id]);
-            if (typeof v === 'number') return v;
-            if (v && typeof v === 'object' && typeof v.t60 === 'number') return v.t60;
-            return sala.tarifa || 0;
-        })();
-        const t60 = Math.round(Number(hora) || 0);
-        const t30 = Math.round(t60 / 2);
-        const t90 = Math.round(t60 * 1.5);
-        const t120 = Math.round(t60 * 2);
-        return { t30, t60, t90, t120 };
+    // Obtiene las tarifas configuradas (manuales) para una sala, con fallback 0
+    _obtenerTarifasConfiguradas(sala) {
+        const t = this.config?.tarifasPorSala?.[sala.id];
+        if (t && typeof t === 'object') {
+            return {
+                t30: Number(t.t30) || 0,
+                t60: Number(t.t60) || 0,
+                t90: Number(t.t90) || 0,
+                t120: Number(t.t120) || 0
+            };
+        }
+        return { t30: 0, t60: 0, t90: 0, t120: 0 };
     }
     
     async actualizarVista() {
@@ -1177,7 +1173,7 @@ class GestorSalas {
         const modal = document.getElementById('modalIniciarSesion');
         if (!modal) return;
 
-        const tarifas = this._tarifasUIDesdeHora(sala);
+        const tarifas = this._obtenerTarifasConfiguradas(sala);
         
         // Helper: asegurar que el botón submit esté limpio (sin "Enviando...")
         const resetSubmitButton = () => {
@@ -2003,14 +1999,17 @@ class GestorSalas {
         contenedorTarifas.innerHTML = `
             <div class="tarifa-header mb-4">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">Tarifa por Hora</h6>
+                    <h6 class="mb-0">Tarifas por Duración (manual)</h6>
                     <div class="btn-group">
                         <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.gestorSalas.aplicarTarifaGlobal()">
                             <i class="fas fa-magic me-2"></i>Aplicar a Todas
                         </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.gestorSalas.mostrarAyudaTarifas()">
+                            <i class="fas fa-question-circle me-2"></i>Ayuda
+                        </button>
                     </div>
                 </div>
-                <small class="text-muted">Edita la tarifa por hora de cada sala. Otras duraciones se muestran proporcionalmente y no se guardan.</small>
+                <small class="text-muted">Ingresa manualmente los precios para 30/60/90/120 minutos por sala. No hay cálculos automáticos.</small>
             </div>
             
             ${Object.entries(salasPorTipo).map(([tipo, salas]) => {
@@ -2030,7 +2029,7 @@ class GestorSalas {
                         
                         <div class="row g-3">
                             ${salas.map(sala => {
-                                const tarifasActuales = this._tarifasUIDesdeHora(sala);
+                                const tarifasActuales = this._obtenerTarifasConfiguradas(sala);
                                 const sesionesActivas = this.sesiones.filter(s => s.salaId === sala.id && !s.finalizada);
                                 return `
                                     <div class="col-12">
@@ -2058,7 +2057,7 @@ class GestorSalas {
                                                                step="500" 
                                                                data-sala-id="${sala.id}"
                                                             data-tiempo="30"
-                                                            required disabled>
+                                                            required>
                                                     </div>
                                                 </div>
                                                 
@@ -2090,7 +2089,7 @@ class GestorSalas {
                                                                step="500" 
                                                                data-sala-id="${sala.id}"
                                                             data-tiempo="90"
-                                                            required disabled>
+                                                            required>
                                                     </div>
                                                 </div>
                                                 
@@ -2106,7 +2105,7 @@ class GestorSalas {
                                                                step="500" 
                                                                data-sala-id="${sala.id}"
                                                             data-tiempo="120"
-                                                            required disabled>
+                                                            required>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2150,17 +2149,13 @@ class GestorSalas {
             
             <div class="alert alert-light border">
                 <div class="row text-center">
-                    <div class="col-md-4">
-                        <i class="fas fa-dollar-sign text-primary"></i>
-                        <small class="d-block mt-1">Se guarda solo tarifa por hora</small>
+                    <div class="col-md-6">
+                        <i class="fas fa-keyboard text-primary"></i>
+                        <small class="d-block mt-1">Precios 30/60/90/120 son manuales</small>
                     </div>
-                    <div class="col-md-4">
-                        <i class="fas fa-balance-scale text-success"></i>
-                        <small class="d-block mt-1">Otras duraciones son proporcionales</small>
-                    </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <i class="fas fa-cloud-upload-alt text-info"></i>
-                        <small class="d-block mt-1">Sincroniza con Supabase</small>
+                        <small class="d-block mt-1">Se guarda en Supabase</small>
                     </div>
                 </div>
             </div>
@@ -2287,36 +2282,32 @@ class GestorSalas {
     }
     
     actualizarTarifaDiferenciada(salaId, tiempo, nuevaTarifa) {
-        // Solo persistimos precio por hora (t60)
+        // Persistir manualmente cada duración t30/t60/t90/t120
         if (!this.config.tarifasPorSala) this.config.tarifasPorSala = {};
-        if (String(tiempo) !== '60') {
-            // Ignorar otros tiempos para evitar tarifas diferenciadas
-            return;
+        if (!this.config.tarifasPorSala[salaId] || typeof this.config.tarifasPorSala[salaId] !== 'object') {
+            this.config.tarifasPorSala[salaId] = {};
         }
-        this.config.tarifasPorSala[salaId] = Number(nuevaTarifa) || 0;
+        this.config.tarifasPorSala[salaId][`t${tiempo}`] = Number(nuevaTarifa) || 0;
         guardarConfiguracion(this.config);
         this.actualizarVista();
-        mostrarNotificacion('Tarifa por hora actualizada', 'success');
+        mostrarNotificacion(`Tarifa de ${tiempo} minutos actualizada`, 'success');
     }
     
     obtenerTarifaPorTiempo(salaId, tiempoMinutos) {
-        const valor = this.config?.tarifasPorSala?.[salaId];
-        let hora = 0;
-        if (typeof valor === 'number') hora = valor;
-        else if (valor && typeof valor === 'object') hora = Number(valor.t60) || 0;
-        else hora = this.salas.find(s => s.id === salaId)?.tarifa || 0;
-        // Precio lineal proporcional al tiempo
-        return Math.round((Number(hora) || 0) * (Number(tiempoMinutos) || 0) / 60);
+        const tarifas = this.config?.tarifasPorSala?.[salaId];
+        if (!tarifas || typeof tarifas !== 'object') return 0;
+        if (tiempoMinutos <= 30) return Number(tarifas.t30) || 0;
+        if (tiempoMinutos <= 60) return Number(tarifas.t60) || 0;
+        if (tiempoMinutos <= 90) return Number(tarifas.t90) || 0;
+        return Number(tarifas.t120) || 0;
     }
     
     calcularTarifaPersonalizada(salaId, tiempoMinutos) {
-        // Precio lineal proporcional a la tarifa por hora
-        const valor = this.config?.tarifasPorSala?.[salaId];
-        let hora = 0;
-        if (typeof valor === 'number') hora = valor;
-        else if (valor && typeof valor === 'object') hora = Number(valor.t60) || 0;
-        else hora = this.salas.find(s => s.id === salaId)?.tarifa || 0;
-        return Math.round((Number(hora) || 0) * (Number(tiempoMinutos) || 0) / 60);
+        // Mantener cálculo solo para tiempos personalizados; si no hay t60, retorna 0
+        const tarifas = this.config?.tarifasPorSala?.[salaId];
+        const hora = tarifas && typeof tarifas === 'object' ? (Number(tarifas.t60) || 0) : 0;
+        if (!hora) return 0;
+        return Math.round(hora * (Number(tiempoMinutos) || 0) / 60);
     }
     
     mostrarAyudaTarifas() {
@@ -2470,7 +2461,7 @@ class GestorSalas {
         const sala = this.salas.find(s => s.id === sesion.salaId);
         if (!sala) return;
 
-        const tarifas = this._tarifasUIDesdeHora(sala);
+        const tarifas = this._obtenerTarifasConfiguradas(sala);
         const tipoInfo = CONFIG.tiposConsola[sala.tipo] || { icon: 'fas fa-gamepad', nombre: 'Consola' };
 
         // Corporate Compact Modal
@@ -2693,7 +2684,7 @@ class GestorSalas {
             }
         } else {
             const sala = this.salas.find(s => s.id === salaId);
-            const tarifas = this._tarifasUIDesdeHora(sala);
+            const tarifas = this._obtenerTarifasConfiguradas(sala);
             
             switch (tiempoSeleccionado.value) {
                 case '30':
@@ -2743,7 +2734,7 @@ class GestorSalas {
             }
             costoAdicional = this.calcularTarifaPersonalizada(sala.id, tiempoAdicional);
         } else {
-            const tarifas = this._tarifasUIDesdeHora(sala);
+            const tarifas = this._obtenerTarifasConfiguradas(sala);
             switch (tiempoSeleccionado.value) {
                 case '30':
                     tiempoAdicional = 30;
@@ -3511,18 +3502,39 @@ class GestorSalas {
                         <div class="modal-body">
                             <form id="formTarifaGlobal">
                                 <div class="row g-3">
-                                    <div class="col-12">
-                                        <label class="form-label">Tarifa por hora</label>
+                                    <div class="col-md-6">
+                                        <label class="form-label">30 minutos</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="t30" value="3500" min="0" step="500" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">1 hora</label>
                                         <div class="input-group">
                                             <span class="input-group-text">$</span>
                                             <input type="number" class="form-control" name="t60" value="6000" min="0" step="500" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">1.5 horas</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="t90" value="8500" min="0" step="500" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">2 horas</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="t120" value="11000" min="0" step="500" required>
                                         </div>
                                     </div>
                                 </div>
                                 
                                 <div class="alert alert-info mt-3">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Esta tarifa por hora se aplicará a todas las salas del sistema.
+                                    Esta estructura de precios se aplicará a todas las salas del sistema.
                                 </div>
                             </form>
                         </div>
@@ -3555,12 +3567,17 @@ class GestorSalas {
         const form = document.getElementById('formTarifaGlobal');
         const formData = new FormData(form);
         
-        const t60 = parseFloat(formData.get('t60'));
+        const tarifas = {
+            t30: parseFloat(formData.get('t30')),
+            t60: parseFloat(formData.get('t60')),
+            t90: parseFloat(formData.get('t90')),
+            t120: parseFloat(formData.get('t120'))
+        };
         
-        // Verificar que el valor sea válido
-        const valoresValidos = !isNaN(t60) && t60 >= 0;
+        // Verificar que todos los valores sean válidos
+        const valoresValidos = Object.values(tarifas).every(val => !isNaN(val) && val >= 0);
         if (!valoresValidos) {
-            mostrarNotificacion('Por favor ingrese un valor válido', 'error');
+            mostrarNotificacion('Por favor ingrese valores válidos para todas las tarifas', 'error');
             return;
         }
         
@@ -3570,7 +3587,7 @@ class GestorSalas {
         }
         
         this.salas.forEach(sala => {
-            this.config.tarifasPorSala[sala.id] = t60;
+            this.config.tarifasPorSala[sala.id] = { ...tarifas };
         });
         
         guardarConfiguracion(this.config);
@@ -3586,7 +3603,7 @@ class GestorSalas {
         }
         
         this.actualizarVista();
-        mostrarNotificacion('Tarifa por hora aplicada a todas las salas', 'success');
+        mostrarNotificacion('Estructura de tarifas aplicada a todas las salas', 'success');
     }
     
     aplicarTarifaTipo(tipo) {
@@ -3602,18 +3619,39 @@ class GestorSalas {
                         <div class="modal-header">
                             <h5 class="modal-title">
                                 <i class="fas fa-copy me-2"></i>
-                                Aplicar Tarifa por Hora - ${tipoNombre}
+                                Aplicar Tarifas - ${tipoNombre}
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
                             <form id="formTarifaTipo">
                                 <div class="row g-3">
-                                    <div class="col-12">
-                                        <label class="form-label">Tarifa por hora</label>
+                                    <div class="col-md-6">
+                                        <label class="form-label">30 minutos</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="t30" value="3500" min="0" step="500" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">1 hora</label>
                                         <div class="input-group">
                                             <span class="input-group-text">$</span>
                                             <input type="number" class="form-control" name="t60" value="6000" min="0" step="500" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">1.5 horas</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="t90" value="8500" min="0" step="500" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">2 horas</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="t120" value="11000" min="0" step="500" required>
                                         </div>
                                     </div>
                                 </div>
@@ -3656,12 +3694,17 @@ class GestorSalas {
         const formData = new FormData(form);
         
         const tipo = formData.get('tipo');
-        const t60 = parseFloat(formData.get('t60'));
+        const tarifas = {
+            t30: parseFloat(formData.get('t30')),
+            t60: parseFloat(formData.get('t60')),
+            t90: parseFloat(formData.get('t90')),
+            t120: parseFloat(formData.get('t120'))
+        };
         
-        // Verificar que el valor sea válido
-        const valoresValidos = !isNaN(t60) && t60 >= 0;
+        // Verificar que todos los valores sean válidos
+        const valoresValidos = Object.values(tarifas).every(val => !isNaN(val) && val >= 0);
         if (!valoresValidos) {
-            mostrarNotificacion('Por favor ingrese un valor válido', 'error');
+            mostrarNotificacion('Por favor ingrese valores válidos para todas las tarifas', 'error');
             return;
         }
         
@@ -3672,7 +3715,7 @@ class GestorSalas {
         
         const salasDelTipo = this.salas.filter(s => s.tipo === tipo);
         salasDelTipo.forEach(sala => {
-            this.config.tarifasPorSala[sala.id] = t60;
+            this.config.tarifasPorSala[sala.id] = { ...tarifas };
         });
         
         guardarConfiguracion(this.config);
@@ -3689,7 +3732,7 @@ class GestorSalas {
         
         this.actualizarVista();
         const tipoNombre = CONFIG.tiposConsola[tipo]?.nombre || tipo;
-        mostrarNotificacion(`Tarifa por hora aplicada a todas las salas de ${tipoNombre}`, 'success');
+        mostrarNotificacion(`Tarifas aplicadas a todas las salas de ${tipoNombre}`, 'success');
     }
 
     // Función para iniciar sesión rápida con duración predefinida
@@ -3810,7 +3853,7 @@ class GestorSalas {
     // Calcular costo para inicio rápido
     calcularCostoInicioRapido(salaId, tiempoMinutos) {
         const sala = this.salas.find(s => s.id === salaId);
-        const tarifas = this._tarifasUIDesdeHora(sala);
+        const tarifas = this._obtenerTarifasConfiguradas(sala);
         
         let tarifaSesion;
 
@@ -3841,7 +3884,7 @@ class GestorSalas {
     // Confirmar inicio rápido
     confirmarInicioRapido(salaId, estacion, tiempoMinutos, nombreCliente) {
         const sala = this.salas.find(s => s.id === salaId);
-        const tarifas = this._tarifasUIDesdeHora(sala);
+        const tarifas = this._obtenerTarifasConfiguradas(sala);
         
         let tarifaSesion;
 
