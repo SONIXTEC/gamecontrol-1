@@ -2003,17 +2003,14 @@ class GestorSalas {
         contenedorTarifas.innerHTML = `
             <div class="tarifa-header mb-4">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">Configuración de Tarifas Diferenciadas</h6>
+                    <h6 class="mb-0">Tarifa por Hora</h6>
                     <div class="btn-group">
                         <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.gestorSalas.aplicarTarifaGlobal()">
-                            <i class="fas fa-magic me-2"></i>Tarifa Global
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.gestorSalas.mostrarAyudaTarifas()">
-                            <i class="fas fa-question-circle me-2"></i>Ayuda
+                            <i class="fas fa-magic me-2"></i>Aplicar a Todas
                         </button>
                     </div>
                 </div>
-                <small class="text-muted">Configure diferentes tarifas según el tiempo de sesión para cada sala</small>
+                <small class="text-muted">Edita la tarifa por hora de cada sala. Otras duraciones se muestran proporcionalmente y no se guardan.</small>
             </div>
             
             ${Object.entries(salasPorTipo).map(([tipo, salas]) => {
@@ -2153,21 +2150,17 @@ class GestorSalas {
             
             <div class="alert alert-light border">
                 <div class="row text-center">
-                    <div class="col-md-3">
-                        <i class="fas fa-clock text-primary"></i>
-                        <small class="d-block mt-1">Tarifas según duración seleccionada</small>
+                    <div class="col-md-4">
+                        <i class="fas fa-dollar-sign text-primary"></i>
+                        <small class="d-block mt-1">Se guarda solo tarifa por hora</small>
                     </div>
-                    <div class="col-md-3">
-                        <i class="fas fa-calculator text-success"></i>
-                        <small class="d-block mt-1">Cálculo automático por minuto</small>
+                    <div class="col-md-4">
+                        <i class="fas fa-balance-scale text-success"></i>
+                        <small class="d-block mt-1">Otras duraciones son proporcionales</small>
                     </div>
-                    <div class="col-md-3">
-                        <i class="fas fa-discount text-warning"></i>
-                        <small class="d-block mt-1">Descuentos por tiempo extendido</small>
-                    </div>
-                    <div class="col-md-3">
-                        <i class="fas fa-sync text-info"></i>
-                        <small class="d-block mt-1">Guardado automático</small>
+                    <div class="col-md-4">
+                        <i class="fas fa-cloud-upload-alt text-info"></i>
+                        <small class="d-block mt-1">Sincroniza con Supabase</small>
                     </div>
                 </div>
             </div>
@@ -3511,46 +3504,25 @@ class GestorSalas {
                         <div class="modal-header">
                             <h5 class="modal-title">
                                 <i class="fas fa-magic me-2"></i>
-                                Aplicar Tarifa Global
+                                Aplicar Tarifa por Hora a Todas
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
                             <form id="formTarifaGlobal">
                                 <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">30 minutos</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" name="t30" value="3500" min="0" step="500" required>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">1 hora</label>
+                                    <div class="col-12">
+                                        <label class="form-label">Tarifa por hora</label>
                                         <div class="input-group">
                                             <span class="input-group-text">$</span>
                                             <input type="number" class="form-control" name="t60" value="6000" min="0" step="500" required>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">1.5 horas</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" name="t90" value="8500" min="0" step="500" required>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">2 horas</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" name="t120" value="11000" min="0" step="500" required>
                                         </div>
                                     </div>
                                 </div>
                                 
                                 <div class="alert alert-info mt-3">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Esta estructura de precios se aplicará a todas las salas del sistema.
+                                    Esta tarifa por hora se aplicará a todas las salas del sistema.
                                 </div>
                             </form>
                         </div>
@@ -3583,17 +3555,12 @@ class GestorSalas {
         const form = document.getElementById('formTarifaGlobal');
         const formData = new FormData(form);
         
-        const tarifas = {
-            t30: parseFloat(formData.get('t30')),
-            t60: parseFloat(formData.get('t60')),
-            t90: parseFloat(formData.get('t90')),
-            t120: parseFloat(formData.get('t120'))
-        };
+        const t60 = parseFloat(formData.get('t60'));
         
-        // Verificar que todos los valores sean válidos
-        const valoresValidos = Object.values(tarifas).every(val => !isNaN(val) && val >= 0);
+        // Verificar que el valor sea válido
+        const valoresValidos = !isNaN(t60) && t60 >= 0;
         if (!valoresValidos) {
-            mostrarNotificacion('Por favor ingrese valores válidos para todas las tarifas', 'error');
+            mostrarNotificacion('Por favor ingrese un valor válido', 'error');
             return;
         }
         
@@ -3603,7 +3570,7 @@ class GestorSalas {
         }
         
         this.salas.forEach(sala => {
-            this.config.tarifasPorSala[sala.id] = { ...tarifas };
+            this.config.tarifasPorSala[sala.id] = t60;
         });
         
         guardarConfiguracion(this.config);
@@ -3619,7 +3586,7 @@ class GestorSalas {
         }
         
         this.actualizarVista();
-        mostrarNotificacion('Estructura de tarifas aplicada a todas las salas', 'success');
+        mostrarNotificacion('Tarifa por hora aplicada a todas las salas', 'success');
     }
     
     aplicarTarifaTipo(tipo) {
@@ -3635,46 +3602,25 @@ class GestorSalas {
                         <div class="modal-header">
                             <h5 class="modal-title">
                                 <i class="fas fa-copy me-2"></i>
-                                Aplicar Tarifa - ${tipoNombre}
+                                Aplicar Tarifa por Hora - ${tipoNombre}
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
                             <form id="formTarifaTipo">
                                 <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">30 minutos</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" name="t30" value="3500" min="0" step="500" required>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">1 hora</label>
+                                    <div class="col-12">
+                                        <label class="form-label">Tarifa por hora</label>
                                         <div class="input-group">
                                             <span class="input-group-text">$</span>
                                             <input type="number" class="form-control" name="t60" value="6000" min="0" step="500" required>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">1.5 horas</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" name="t90" value="8500" min="0" step="500" required>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">2 horas</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" name="t120" value="11000" min="0" step="500" required>
                                         </div>
                                     </div>
                                 </div>
                                 
                                 <div class="alert alert-info mt-3">
                                     <i class="fas fa-info-circle me-2"></i>
-                                    Esta estructura se aplicará a ${salasDelTipo.length} sala(s) de tipo ${tipoNombre}.
+                                    Esta tarifa por hora se aplicará a ${salasDelTipo.length} sala(s) de tipo ${tipoNombre}.
                                 </div>
                                 
                                 <input type="hidden" name="tipo" value="${tipo}">
@@ -3710,17 +3656,12 @@ class GestorSalas {
         const formData = new FormData(form);
         
         const tipo = formData.get('tipo');
-        const tarifas = {
-            t30: parseFloat(formData.get('t30')),
-            t60: parseFloat(formData.get('t60')),
-            t90: parseFloat(formData.get('t90')),
-            t120: parseFloat(formData.get('t120'))
-        };
+        const t60 = parseFloat(formData.get('t60'));
         
-        // Verificar que todos los valores sean válidos
-        const valoresValidos = Object.values(tarifas).every(val => !isNaN(val) && val >= 0);
+        // Verificar que el valor sea válido
+        const valoresValidos = !isNaN(t60) && t60 >= 0;
         if (!valoresValidos) {
-            mostrarNotificacion('Por favor ingrese valores válidos para todas las tarifas', 'error');
+            mostrarNotificacion('Por favor ingrese un valor válido', 'error');
             return;
         }
         
@@ -3731,7 +3672,7 @@ class GestorSalas {
         
         const salasDelTipo = this.salas.filter(s => s.tipo === tipo);
         salasDelTipo.forEach(sala => {
-            this.config.tarifasPorSala[sala.id] = { ...tarifas };
+            this.config.tarifasPorSala[sala.id] = t60;
         });
         
         guardarConfiguracion(this.config);
@@ -3748,7 +3689,7 @@ class GestorSalas {
         
         this.actualizarVista();
         const tipoNombre = CONFIG.tiposConsola[tipo]?.nombre || tipo;
-        mostrarNotificacion(`Tarifas aplicadas a todas las salas de ${tipoNombre}`, 'success');
+        mostrarNotificacion(`Tarifa por hora aplicada a todas las salas de ${tipoNombre}`, 'success');
     }
 
     // Función para iniciar sesión rápida con duración predefinida
