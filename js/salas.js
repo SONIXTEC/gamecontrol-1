@@ -1915,7 +1915,8 @@ class GestorSalas {
                     // Actualizar las tarifas en la configuración
                     const config = obtenerConfiguracion();
                     const salaIdParaTarifa = this.salas[this.salas.length - 1].id;
-                    config.tarifasPorSala[salaIdParaTarifa] = tarifa;
+                    if (!config.tarifasPorSala) config.tarifasPorSala = {};
+                    config.tarifasPorSala[salaIdParaTarifa] = { t30: 0, t60: tarifa, t90: 0, t120: 0 };
                     guardarConfiguracion(config);
                     this.config = config;
                     
