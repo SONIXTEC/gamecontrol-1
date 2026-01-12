@@ -35,10 +35,12 @@
     <link rel="stylesheet" href="../css/salas-mobile-corporate.css">
     <!-- Estilos corporativos generales para Salas -->
     <link rel="stylesheet" href="../css/salas-corporate.css">
+    <!-- Tema gamer inspirado en pages/mejora.html -->
+    <link rel="stylesheet" href="../css/salas-mejora-theme.css">
     <script>window.ALLOW_CONTEXT_MENU = true;</script>
     <script src="../js/security-production.js"></script>
 </head>
-<body class="salas-page salas-corporate">
+<body class="salas-page salas-corporate salas-mejora">
     <!-- Menú hamburguesa para móvil (Mochila al header) -->
     <!-- <button class="menu-toggle" id="menuToggle">
         <i class="fas fa-bars"></i>
@@ -350,6 +352,16 @@
                             <div id="opcionesTiempo">
                                 <!-- Las opciones de tiempo se generarán dinámicamente -->
                             </div>
+                        </div>
+
+                        <!-- Tiempo personalizado (soportado por js/salas.js) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small text-muted mb-1">Tiempo personalizado</label>
+                            <div class="input-group input-group-lg">
+                                <input type="number" class="form-control" name="tiempoPersonalizado" min="1" step="1" placeholder="Ej: 75" inputmode="numeric">
+                                <span class="input-group-text">min</span>
+                            </div>
+                            <div class="form-text">Si escribes aquí, se usa este tiempo y se ignoran las opciones de arriba.</div>
                         </div>
 
                         <!-- Total -->
