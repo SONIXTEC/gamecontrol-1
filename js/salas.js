@@ -35,20 +35,44 @@ function guardarConfiguracion(config) {
     // Sincronizar con Supabase en segundo plano (detectar esquema dinámicamente)
     if (window.databaseService) {
         window.databaseService
-            .select('configuracion', { limite: 1 })
-            .then(res => {
+            .select('configuracion', { limite: 1, noCache: true })
+            .then(async (res) => {
+                // Si existe esquema key-value (clave/valor), SIEMPRE apuntar a 'global_config'
                 if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-                    const row = res.data[0];
-                    const rowId = row.id;
+                    const row0 = res.data[0];
+                    if (row0 && Object.prototype.hasOwnProperty.call(row0, 'clave')) {
+                        try {
+                            const resKV = await window.databaseService.select('configuracion', {
+                                filtros: { clave: 'global_config' },
+                                limite: 1,
+                                noCache: true
+                            });
+                            if (resKV && resKV.success && Array.isArray(resKV.data) && resKV.data.length > 0) {
+                                const row = resKV.data[0];
+                                return window.databaseService.update('configuracion', row.id, { valor: config });
+                            }
+                        } catch (_) {}
+                        // No existe fila global_config: insertar
+                        return window.databaseService.insert('configuracion', {
+                            clave: 'global_config',
+                            valor: config,
+                            tipo: 'json',
+                            editable: true,
+                            publico: false
+                        });
+                    }
+
+                    // Esquema "fila única" (datos/valor)
+                    const row = row0;
                     const payload = (row && Object.prototype.hasOwnProperty.call(row, 'datos'))
                         ? { datos: config }
                         : (Object.prototype.hasOwnProperty.call(row, 'valor') ? { valor: config } : { datos: config });
-                    return window.databaseService.update('configuracion', rowId, payload);
-                } else {
-                    // No existe fila: intentar insertar con 'datos', fallback a key-value
-                    return window.databaseService.insert('configuracion', { datos: config })
-                        .catch(() => window.databaseService.insert('configuracion', { clave: 'global_config', valor: config, tipo: 'json', editable: true, publico: false }));
+                    return window.databaseService.update('configuracion', row.id, payload);
                 }
+
+                // Tabla vacía: intentar insertar con 'datos', fallback a key-value
+                return window.databaseService.insert('configuracion', { datos: config })
+                    .catch(() => window.databaseService.insert('configuracion', { clave: 'global_config', valor: config, tipo: 'json', editable: true, publico: false }));
             })
             .then((res2) => {
                 if (res2 && res2.success) {
@@ -1823,9 +1847,15 @@ class GestorSalas {
                 // Actualizar tarifas
                 for (const [key, value] of formData.entries()) {
                     if (key.startsWith('tarifa_')) {
-                        const [_, salaId, tiempo] = key.split('_');
+                        // Nota: el salaId puede contener '_' (ej: 'sala_1700000000000_abcd'),
+                        // por eso extraemos el tiempo desde el último '_' en lugar de split fijo.
+                        const sinPrefijo = key.slice('tarifa_'.length);
+                        const lastUnderscore = sinPrefijo.lastIndexOf('_');
+                        if (lastUnderscore === -1) continue;
+                        const salaId = sinPrefijo.slice(0, lastUnderscore);
+                        const tiempo = sinPrefijo.slice(lastUnderscore + 1);
                         const tarifa = parseFloat(value);
-                        if (!isNaN(tarifa)) {
+                        if (!isNaN(tarifa) && salaId && tiempo) {
                             this.actualizarTarifaDiferenciada(salaId, tiempo, tarifa);
                         }
                     }
@@ -4123,18 +4153,62 @@ async function inicializarSincronizacionConfiguracion() {
     
     console.log('🔄 Inicializando sincronización de configuración...');
 
+    const mergeTarifasPorSala = (remoteTarifas, localTarifas) => {
+        const local = (localTarifas && typeof localTarifas === 'object') ? localTarifas : {};
+        const remote = (remoteTarifas && typeof remoteTarifas === 'object') ? remoteTarifas : null;
+        if (!remote) return local;
+        const remoteKeys = Object.keys(remote);
+        if (remoteKeys.length === 0) return local;
+
+        const merged = { ...local };
+        for (const salaId of remoteKeys) {
+            const r = remote[salaId];
+            const l = local[salaId];
+            if (r && typeof r === 'object') {
+                const rObj = r;
+                const lObj = (l && typeof l === 'object') ? l : {};
+                // No pisar valores locales no-cero con 0 remoto (evita reseteos por config remota vacía)
+                const pick = (key) => {
+                    const rv = Number(rObj[key]) || 0;
+                    const lv = Number(lObj[key]) || 0;
+                    return (rv === 0 && lv > 0) ? lv : rv;
+                };
+                merged[salaId] = {
+                    t30: pick('t30'),
+                    t60: pick('t60'),
+                    t90: pick('t90'),
+                    t120: pick('t120')
+                };
+            } else {
+                merged[salaId] = r;
+            }
+        }
+        return merged;
+    };
+
     // 1. Obtener configuración inicial desde Supabase
     try {
-        // Leer primera fila y detectar columna ('datos' o 'valor')
+        // Leer primera fila y detectar esquema (datos/valor vs clave/valor)
         let remoteConfig = null;
-        let resAny = await window.databaseService.select('configuracion', { limite: 1 });
+        let resAny = await window.databaseService.select('configuracion', { limite: 1, noCache: true });
         if (resAny.success && resAny.data && resAny.data.length > 0) {
-            const row = resAny.data[0];
-            remoteConfig = (Object.prototype.hasOwnProperty.call(row, 'datos') ? row.datos : (row.valor || null));
+            const row0 = resAny.data[0];
+            if (row0 && Object.prototype.hasOwnProperty.call(row0, 'clave')) {
+                // Esquema key-value: preferir global_config
+                try {
+                    const resKV = await window.databaseService.select('configuracion', { filtros: { clave: 'global_config' }, limite: 1, noCache: true });
+                    if (resKV.success && resKV.data && resKV.data.length > 0) {
+                        const row = resKV.data[0];
+                        remoteConfig = row.valor || row.datos || null;
+                    }
+                } catch (_) {}
+            } else {
+                remoteConfig = (Object.prototype.hasOwnProperty.call(row0, 'datos') ? row0.datos : (row0.valor || null));
+            }
         } else {
             // Intentar key-value específica
             try {
-                const resKV = await window.databaseService.select('configuracion', { filtros: { clave: 'global_config' }, limite: 1 });
+                const resKV = await window.databaseService.select('configuracion', { filtros: { clave: 'global_config' }, limite: 1, noCache: true });
                 if (resKV.success && resKV.data && resKV.data.length > 0) {
                     const row = resKV.data[0];
                     remoteConfig = row.valor || row.datos || null;
@@ -4147,14 +4221,14 @@ async function inicializarSincronizacionConfiguracion() {
             const localConfig = localConfigStr ? JSON.parse(localConfigStr) : {};
 
             const mergedConfig = {
-                tarifasPorSala: remoteConfig.tarifasPorSala || localConfig.tarifasPorSala || {},
+                ...remoteConfig,
+                tarifasPorSala: mergeTarifasPorSala(remoteConfig.tarifasPorSala, localConfig.tarifasPorSala),
                 tiposConsola: remoteConfig.tiposConsola || localConfig.tiposConsola || {
                     playstation: { prefijo: 'PS' },
                     xbox: { prefijo: 'XB' },
                     nintendo: { prefijo: 'NT' },
                     pc: { prefijo: 'PC' }
-                },
-                ...remoteConfig
+                }
             };
 
             const mergedStr = JSON.stringify(mergedConfig);
@@ -4188,19 +4262,31 @@ async function inicializarSincronizacionConfiguracion() {
                     try {
                         const row = payload?.new || null;
                         if (!row) return;
+                        const localConfigStr = localStorage.getItem('configuracion');
+                        const localConfig = localConfigStr ? JSON.parse(localConfigStr) : {};
                         // Si hay clave, solo reaccionar a 'global_config'; si no hay clave, usar 'datos'
                         if (Object.prototype.hasOwnProperty.call(row, 'clave')) {
                             if (row.clave !== 'global_config') return;
                             const newConfig = row.valor || row.datos || null;
                             if (newConfig && typeof newConfig === 'object' && Object.keys(newConfig).length > 0) {
-                                localStorage.setItem('configuracion', JSON.stringify(newConfig));
+                                const merged = {
+                                    ...newConfig,
+                                    tarifasPorSala: mergeTarifasPorSala(newConfig.tarifasPorSala, localConfig.tarifasPorSala),
+                                    tiposConsola: newConfig.tiposConsola || localConfig.tiposConsola
+                                };
+                                localStorage.setItem('configuracion', JSON.stringify(merged));
                                 if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
                                 mostrarNotificacion('Configuración actualizada en tiempo real', 'info');
                             }
                         } else if (Object.prototype.hasOwnProperty.call(row, 'datos')) {
                             const newConfig = row.datos;
                             if (newConfig && typeof newConfig === 'object' && Object.keys(newConfig).length > 0) {
-                                localStorage.setItem('configuracion', JSON.stringify(newConfig));
+                                const merged = {
+                                    ...newConfig,
+                                    tarifasPorSala: mergeTarifasPorSala(newConfig.tarifasPorSala, localConfig.tarifasPorSala),
+                                    tiposConsola: newConfig.tiposConsola || localConfig.tiposConsola
+                                };
+                                localStorage.setItem('configuracion', JSON.stringify(merged));
                                 if (window.gestorSalas) window.gestorSalas.recargarConfiguracion();
                                 mostrarNotificacion('Configuración actualizada en tiempo real', 'info');
                             }
