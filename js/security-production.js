@@ -34,34 +34,29 @@
     // Run auth check immediately
     checkAuth();
 
-    // 2. Disable Developer Tools & Context Menu (allow override)
-    const allowContextMenu = (function() {
-        try {
-            return (typeof window !== 'undefined' && window.ALLOW_CONTEXT_MENU === true) ||
-                   (localStorage.getItem('allowContextMenu') === '1');
-        } catch (_) {
-            return false;
-        }
-    })();
+    // 2. Developer Tools & Context Menu
+    // Por defecto NO se bloquean (para depurar). Si quieres activar bloqueo en producción,
+    // define: window.BLOCK_DEVTOOLS = true antes de cargar este script.
+    const shouldBlockDevtools = (typeof window !== 'undefined' && window.BLOCK_DEVTOOLS === true);
 
-    if (!allowContextMenu) {
+    if (shouldBlockDevtools) {
         document.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             return false;
         });
-    }
 
-    document.addEventListener('keydown', function(e) {
-        // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
-        if (
-            e.key === 'F12' || 
-            (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) || 
-            (e.ctrlKey && e.key === 'U')
-        ) {
-            e.preventDefault();
-            return false;
-        }
-    });
+        document.addEventListener('keydown', function(e) {
+            // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
+            if (
+                e.key === 'F12' ||
+                (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) ||
+                (e.ctrlKey && e.key === 'U')
+            ) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    }
 
     // 3. Disable Console Logs in Production
     // Uncomment the following block to silence the console completely

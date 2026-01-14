@@ -857,9 +857,13 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', () => {
     // Configurar botones de cerrar sesión
     const setupLogoutButtons = () => {
-        const logoutButtons = document.querySelectorAll('a[href="#logout"], .logout-btn, [onclick*="logout"], [onclick*="cerrarSesion"]');
+        // Solo aplicar listeners a elementos genéricos de logout que NO tengan un manejador inline explícito
+        const logoutButtons = document.querySelectorAll('a[href="#logout"], .logout-btn');
         
         logoutButtons.forEach(button => {
+            // Si ya tiene un onclick definido en el HTML, no agregar otro listener para evitar doble confirmación
+            if (button.hasAttribute('onclick')) return;
+
             button.addEventListener('click', (e) => {
                 e.preventDefault();
                 

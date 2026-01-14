@@ -138,6 +138,32 @@ window.supabaseConfig.verificarEstadoConexion()
 
 ---
 
+## 🔐 Cambiar contraseña (100% Supabase)
+
+Para que el botón de “Cambiar contraseña” en la pantalla de usuarios actualice **Supabase Auth** y la tabla **usuarios.password_hash** (sin guardar nada en local), se usa la Edge Function `user-set-password`.
+
+### 1) Requisitos
+- Tener Supabase CLI instalado y el proyecto linkeado.
+- Definir el secret `SUPABASE_SERVICE_ROLE_KEY` (NO ponerlo en el frontend).
+
+### 2) Setear secrets
+```bash
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY="TU_SERVICE_ROLE_KEY"
+```
+
+### 3) Deploy de la función
+```bash
+supabase functions deploy user-set-password
+```
+
+### 4) Verificación rápida
+- En `usuarios.html`, cambiar contraseña de un usuario.
+- Debe reflejarse en:
+   - Supabase Auth (password del usuario)
+   - Tabla `usuarios` (columna `password_hash`)
+
+---
+
 ## 🚨 Resolución de Problemas
 
 ### Problema: "Error de conexión"

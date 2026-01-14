@@ -1,14 +1,16 @@
 // Script utilitario para agregar usuarios al sistema
 console.log('🔧 Script para agregar usuarios al sistema');
 
+console.warn('⚠️ Este script ya no usa localStorage(\'usuarios\'). Use Supabase (RPC crear_usuario) desde la pantalla de Usuarios o desde el SQL Editor.');
+
 // Función para obtener usuarios existentes
 function obtenerUsuarios() {
-    return JSON.parse(localStorage.getItem('usuarios') || '[]');
+    return [];
 }
 
 // Función para guardar usuarios
 function guardarUsuarios(usuarios) {
-    localStorage.setItem('usuarios', JSON.stringify(usuarios));
+    // No-op: Supabase-only
 }
 
 // Función para agregar un nuevo usuario
@@ -25,13 +27,9 @@ function agregarUsuario(datos) {
         return false;
     }
     
-    const usuarios = obtenerUsuarios();
-    
-    // Verificar si el usuario ya existe
-    if (usuarios.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-        console.error('❌ Ya existe un usuario con ese email:', email);
-        return false;
-    }
+    // En Supabase-only, este script no crea usuarios.
+    console.error('❌ Acción deshabilitada: crear usuarios debe hacerse en Supabase.');
+    return false;
     
     // Definir permisos por rol
     const permisosPorRol = {
@@ -77,61 +75,19 @@ function agregarUsuario(datos) {
         }
     };
     
-    // Crear nuevo usuario
-    const nuevoUsuario = {
-        id: 'user_' + Date.now(),
-        nombre: nombre,
-        email: email,
-        password: password,
-        rol: rol,
-        estado: 'activo',
-        fechaCreacion: new Date().toISOString(),
-        ultimoAcceso: null,
-        permisos: permisosPorRol[rol.toLowerCase()] || permisosPorRol['operador']
-    };
-    
-    // Agregar al array de usuarios
-    usuarios.push(nuevoUsuario);
-    
-    // Guardar en localStorage
-    guardarUsuarios(usuarios);
-    
-    console.log('✅ Usuario agregado exitosamente:');
-    console.log('👤 Nombre:', nombre);
-    console.log('📧 Email:', email);
-    console.log('🔑 Rol:', rol);
-    console.log('🆔 ID:', nuevoUsuario.id);
-    
-    return nuevoUsuario;
+    return false;
 }
 
 // Función para listar todos los usuarios
 function listarUsuarios() {
-    const usuarios = obtenerUsuarios();
-    console.log('👥 Usuarios en el sistema:', usuarios.length);
-    
-    usuarios.forEach((usuario, index) => {
-        console.log(`${index + 1}. ${usuario.nombre} (${usuario.email}) - ${usuario.rol} - ${usuario.estado}`);
-    });
-    
-    return usuarios;
+    console.log('👥 Supabase-only: listar usuarios desde la pantalla Usuarios');
+    return [];
 }
 
 // Función para cambiar estado de usuario
 function cambiarEstadoUsuario(email, nuevoEstado = 'activo') {
-    const usuarios = obtenerUsuarios();
-    const usuario = usuarios.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (!usuario) {
-        console.error('❌ Usuario no encontrado:', email);
-        return false;
-    }
-    
-    usuario.estado = nuevoEstado;
-    guardarUsuarios(usuarios);
-    
-    console.log(`✅ Estado de ${usuario.nombre} cambiado a: ${nuevoEstado}`);
-    return true;
+    console.error('❌ Acción deshabilitada: actualizar estado debe hacerse en Supabase (pantalla Usuarios).');
+    return false;
 }
 
 // Hacer funciones globales para uso desde consola
@@ -146,12 +102,4 @@ console.log('listarUsuarios()');
 console.log('cambiarEstadoUsuario("juan@ejemplo.com", "inactivo")');
 
 // Verificar usuario principal
-console.log('🔍 Verificando usuario principal...');
-const usuarios = obtenerUsuarios();
-const usuarioPrincipal = usuarios.find(u => u.email === 'maurochica23@gmail.com');
-
-if (usuarioPrincipal) {
-    console.log('✅ Usuario principal encontrado:', usuarioPrincipal.nombre);
-} else {
-    console.log('⚠️ Usuario principal no encontrado. Ejecutando desde login.html para crearlo.');
-} 
+console.log('🔍 Supabase-only: verifica usuarios en el dashboard de Supabase.');

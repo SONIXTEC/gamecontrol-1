@@ -17,8 +17,9 @@ class AuthAdapter {
             this.modoLocal = false;
             console.log('✅ AuthAdapter: Conectado con DatabaseService');
         } else {
+            // Requisito: no usar almacenamiento local para usuarios.
             this.modoLocal = true;
-            console.log('⚠️ AuthAdapter: Modo local activo');
+            console.warn('⚠️ AuthAdapter: Sin DatabaseService (modo Supabase-only no disponible)');
         }
     }
 
@@ -42,40 +43,12 @@ class AuthAdapter {
                 }
             }
 
-            // Fallback al sistema local
-            console.log('🔄 Intentando autenticación local...');
-            return this.autenticarLocal(email, password);
+            // Sin fallback local para usuarios (Supabase-only)
+            return { success: false, error: 'Sin conexión a Supabase' };
 
         } catch (error) {
             console.error('❌ Error en autenticación:', error);
             return { success: false, error: 'Error de autenticación' };
-        }
-    }
-
-    async autenticarLocal(email, password) {
-        try {
-            const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-            
-            const usuario = usuarios.find(u => 
-                u.email.toLowerCase() === email.toLowerCase() && 
-                u.estado === 'activo'
-            );
-
-            if (!usuario) {
-                return { success: false, error: 'Usuario no encontrado' };
-            }
-
-            // Verificación simple de contraseña (en producción usar hash)
-            if (usuario.email === 'maurochica23@gmail.com' && password === 'kennia23') {
-                console.log('✅ Autenticación local exitosa');
-                return this.crearSesion(usuario, 'local');
-            }
-
-            return { success: false, error: 'Contraseña incorrecta' };
-
-        } catch (error) {
-            console.error('❌ Error en autenticación local:', error);
-            return { success: false, error: 'Error de autenticación local' };
         }
     }
 
@@ -124,10 +97,7 @@ class AuthAdapter {
                 }
             }
 
-            // Fallback local
-            console.log('📋 Obteniendo usuarios del almacenamiento local...');
-            const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-            return { success: true, data: usuarios };
+            return { success: false, error: 'Sin conexión a base de datos' };
 
         } catch (error) {
             console.error('❌ Error obteniendo usuarios:', error);
@@ -173,21 +143,7 @@ class AuthAdapter {
                 return { success: true, data: created };
             }
 
-            // Fallback local
-            console.log('👤 Creando usuario localmente...');
-            const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-            
-            const nuevoUsuario = {
-                id: 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                ...datosUsuario,
-                fechaCreacion: new Date().toISOString(),
-                estado: 'activo'
-            };
-
-            usuarios.push(nuevoUsuario);
-            localStorage.setItem('usuarios', JSON.stringify(usuarios));
-
-            return { success: true, data: nuevoUsuario };
+            return { success: false, error: 'Sin conexión a base de datos' };
 
         } catch (error) {
             console.error('❌ Error creando usuario:', error);
@@ -208,9 +164,6 @@ class AuthAdapter {
 
             console.log('🔄 Iniciando sincronización de usuarios...');
 
-            // Obtener usuarios locales
-            const usuariosLocales = JSON.parse(localStorage.getItem('usuarios') || '[]');
-            
             // Obtener usuarios remotos
             const resultadoRemoto = await this.db.select('usuarios');
             
@@ -219,46 +172,8 @@ class AuthAdapter {
             }
 
             const usuariosRemotos = resultadoRemoto.data;
-
-            // Sincronizar usuarios locales que no existen remotamente
-            for (const usuarioLocal of usuariosLocales) {
-                const existeRemoto = usuariosRemotos.find(ur => ur.email === usuarioLocal.email);
-                
-                if (!existeRemoto && usuarioLocal.email !== 'maurochica23@gmail.com') {
-                    // No sincronizar el usuario demo principal
-                    console.log(`📤 Sincronizando usuario local: ${usuarioLocal.email}`);
-                    
-                    const client = await this.db.getClient();
-                    await client.rpc('crear_usuario', {
-                        p_nombre: usuarioLocal.nombre,
-                        p_email: usuarioLocal.email,
-                        p_password: usuarioLocal.password,
-                        p_rol: usuarioLocal.rol,
-                        p_permisos: usuarioLocal.permisos
-                    });
-                }
-            }
-
-            // Actualizar usuarios locales con datos remotos
-            const usuariosActualizados = [];
-            for (const usuarioRemoto of usuariosRemotos) {
-                usuariosActualizados.push({
-                    id: usuarioRemoto.id,
-                    nombre: usuarioRemoto.nombre,
-                    email: usuarioRemoto.email,
-                    password: usuarioRemoto.password_hash,
-                    rol: usuarioRemoto.rol,
-                    estado: usuarioRemoto.estado,
-                    permisos: usuarioRemoto.permisos,
-                    fechaCreacion: usuarioRemoto.fecha_creacion,
-                    ultimoAcceso: usuarioRemoto.ultimo_acceso
-                });
-            }
-
-            localStorage.setItem('usuarios', JSON.stringify(usuariosActualizados));
-
-            console.log('✅ Sincronización de usuarios completada');
-            return { success: true, sincronizados: usuariosActualizados.length };
+            console.log('✅ Sincronización de usuarios completada (solo Supabase)');
+            return { success: true, sincronizados: Array.isArray(usuariosRemotos) ? usuariosRemotos.length : 0 };
 
         } catch (error) {
             console.error('❌ Error en sincronización:', error);
@@ -307,27 +222,25 @@ class AuthAdapter {
                 return { success: false, error: 'Contraseña actual incorrecta' };
             }
 
-            if (this.db && !this.modoLocal) {
-                // Actualizar en Supabase
-                const usuario = await this.db.select('usuarios', {
-                    filtros: { email: email }
-                });
-
-                if (usuario.success && usuario.data.length > 0) {
-                    await this.db.update('usuarios', usuario.data[0].id, {
-                        password_hash: contrasenaNueva // En producción usar hash
-                    });
-                }
+            if (!this.db || this.modoLocal) {
+                return { success: false, error: 'Sin conexión a Supabase' };
             }
 
-            // Actualizar localmente
-            const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
-            const indiceUsuario = usuarios.findIndex(u => u.email === email);
-            
-            if (indiceUsuario !== -1) {
-                usuarios[indiceUsuario].password = contrasenaNueva;
-                localStorage.setItem('usuarios', JSON.stringify(usuarios));
-            }
+            // Actualizar en Supabase a través del flujo central (Edge Function)
+            const client = await this.db.getClient();
+            const { data: usuarioRow, error: usuarioErr } = await client
+                .from('usuarios')
+                .select('id')
+                .eq('email', email)
+                .maybeSingle();
+            if (usuarioErr) throw usuarioErr;
+            if (!usuarioRow?.id) throw new Error('Usuario no encontrado');
+
+            const { data: invokeData, error: invokeError } = await client.functions.invoke('user-set-password', {
+                body: { usuarioId: usuarioRow.id, password: contrasenaNueva }
+            });
+            if (invokeError) throw invokeError;
+            if (!invokeData?.success) throw new Error(invokeData?.error || 'No se pudo cambiar la contraseña');
 
             console.log('✅ Contraseña cambiada exitosamente');
             return { success: true };

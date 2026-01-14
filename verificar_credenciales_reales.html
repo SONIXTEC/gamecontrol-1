@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificar Credenciales Reales Supabase</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .log-item { margin: 10px 0; padding: 10px; border-radius: 4px; border: 1px solid #ddd; }
+        .log-success { background-color: #e6fffa; border-color: #b2f5ea; }
+        .log-error { background-color: #fff5f5; border-color: #feb2b2; }
+    </style>
+</head>
+<body>
+    <h1>Verificación de Conexión Supabase</h1>
+    <div id="logs"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://stjbtxrrdofuxhigxfcy.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0amJ0eHJyZG9mdXhoaWd4ZmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4MTgwNzUsImV4cCI6MjA3NzM5NDA3NX0.vhz6v2pRepUH7g-ucSJKtWonmAeWYqwhrTxG_ypVElo';
+
+        function addLog(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `log-item log-${type}`;
+            div.innerHTML = message;
+            logs.appendChild(div);
+            // También a consola para debug
+            if (type === 'error') console.error(message);
+            else console.log(message);
+        }
+
+        async function verifyConnection() {
+            try {
+                addLog('Iniciando verificación...', 'info');
+
+                if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+                    throw new Error('Supabase SDK no cargado correctamente');
+                }
+
+                const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                addLog('Cliente Supabase inicializado', 'success');
+
+                // Intenta una consulta simple, por ejemplo a auth.getSession() que no requiere tablas
+                const { data, error } = await client.auth.getSession();
+                
+                if (error) {
+                    throw error;
+                }
+
+                addLog(`✅ Conexión exitosa con Supabase!`, 'success');
+                addLog(`URL: ${SUPABASE_URL}`, 'info');
+                
+                // Intentar listar tablas (suele fallar por RLS pero confirma conexión a la BD)
+                addLog('Intentando consultar base de datos...', 'info');
+                // Intentamos consultar una tabla que probablemente exista o fallará con un error específico de permisos/tabla no encontrada, 
+                // pero eso confirma que llegamos a la BD.
+                const { error: dbError } = await client.from('usuarios_sistema').select('count', { count: 'exact', head: true });
+
+                if (dbError) {
+                    addLog(`ℹ️ Respuesta de BD: ${dbError.message} (Esto es normal si la tabla no existe o tiene RLS, pero confirma que contactamos la BD)`, 'info');
+                } else {
+                    addLog('✅ Consulta a tabla usuarios_sistema exitosa', 'success');
+                }
+
+            } catch (err) {
+                addLog(`❌ Error de conexión: ${err.message}`, 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', verifyConnection);
+    </script>
+</body>
+</html>

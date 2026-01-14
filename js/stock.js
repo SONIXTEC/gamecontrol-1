@@ -955,6 +955,24 @@ class GestorStock {
         if (!producto) return;
 
         if (confirm(`¿Estás seguro de que deseas eliminar "${producto.nombre}"?\n\nEsta acción no se puede deshacer.`)) {
+            // Eliminar de Supabase primero
+            (async () => {
+                try {
+                   if (window.databaseService) {
+                       const res = await window.databaseService.delete('productos', productoId);
+                       if (!res || !res.success) {
+                           console.warn('⚠️ No se pudo eliminar de Supabase, verifique permisos o conexión');
+                           // Opcional: alertar al usuario si falla remotamente
+                       } else {
+                           console.log('✅ Producto eliminado de Supabase');
+                       }
+                   }
+                } catch (e) {
+                    console.error('Error eliminando de Supabase:', e);
+                }
+            })();
+
+            // Eliminar localmente
             this.productos = this.productos.filter(p => p.id !== productoId);
             guardarProductos(this.productos);
 

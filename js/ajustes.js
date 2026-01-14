@@ -822,7 +822,8 @@ class SistemaAjustes {
                 sesiones: this.obtenerSesionesReales(),
                 productos: this.obtenerProductosReales(),
                 ventas: this.obtenerVentasReales(),
-                usuarios: JSON.parse(localStorage.getItem('usuarios')) || [],
+                // Usuarios: fuente de verdad Supabase (no localStorage)
+                usuarios: (window.gestorUsuarios && Array.isArray(window.gestorUsuarios.usuarios)) ? window.gestorUsuarios.usuarios : [],
                 gastos: JSON.parse(localStorage.getItem('gastos')) || []
             };
 

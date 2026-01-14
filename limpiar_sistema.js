@@ -29,30 +29,8 @@ function limpiarSistemaCompleto() {
         console.log(`❌ Eliminado: ${clave}`);
     });
     
-    // Mantener SOLO el usuario administrador real
-    const usuarioReal = {
-        id: 'admin_real_001',
-        nombre: 'Mauro Chica',
-        email: 'maurochica23@gmail.com',
-        password: 'kennia23',
-        rol: 'administrador',
-        estado: 'activo',
-        fechaCreacion: new Date().toISOString(),
-        permisos: {
-            dashboard: true,
-            salas: true,
-            ventas: true,
-            gastos: true,
-            stock: true,
-            reportes: true,
-            usuarios: true,
-            ajustes: true
-        }
-    };
-    
-    // Guardar solo el usuario real
-    localStorage.setItem('usuarios', JSON.stringify([usuarioReal]));
-    console.log('✅ Usuario administrador real mantenido');
+    console.warn('⚠️ Supabase-only: este script ya no crea ni guarda usuarios en localStorage.');
+    console.warn('➡️ Para preparar producción, gestiona usuarios desde Supabase (Auth + tabla `usuarios`).');
     
     // Limpiar sesión actual si existe
     localStorage.removeItem('sesionActual');
@@ -88,7 +66,7 @@ function limpiarSistemaCompleto() {
 function verificarEstadoSistema() {
     console.log('\n📋 VERIFICANDO ESTADO DEL SISTEMA:');
     
-    const usuarios = JSON.parse(localStorage.getItem('usuarios') || '[]');
+    const usuarios = [];
     const sesiones = JSON.parse(localStorage.getItem('sesiones') || '[]');
     const productos = JSON.parse(localStorage.getItem('productos_stock') || '[]');
     const salas = JSON.parse(localStorage.getItem('salas') || '[]');
@@ -100,11 +78,7 @@ function verificarEstadoSistema() {
     console.log(`🏢 Salas: ${salas.length}`);
     console.log(`💸 Gastos: ${gastos.length}`);
     
-    if (usuarios.length === 1 && usuarios[0].email === 'maurochica23@gmail.com') {
-        console.log('✅ Sistema limpio - Solo usuario administrador presente');
-    } else {
-        console.log('⚠️ El sistema no está completamente limpio');
-    }
+    console.log('ℹ️ Supabase-only: usuarios se verifican en Supabase.');
     
     const totalDatos = sesiones.length + productos.length + salas.length + gastos.length;
     console.log(`📊 Total de datos operativos: ${totalDatos}`);
@@ -115,7 +89,7 @@ function verificarEstadoSistema() {
         productos: productos.length,
         salas: salas.length,
         gastos: gastos.length,
-        limpio: totalDatos === 0 && usuarios.length === 1
+        limpio: totalDatos === 0
     };
 }
 

@@ -190,10 +190,8 @@ function configurarEventos() {
     });
   }
 
-  ;['email', 'password'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('keypress', (e) => { if (e.key === 'Enter') manejarLogin(e); });
-  });
+  // Eliminado: listeners manuales de keypress 'Enter'
+  // El formulario ya maneja esto nativamente con el evento 'submit'
 }
 
 // ===================================================================
