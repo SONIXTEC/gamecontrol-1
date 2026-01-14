@@ -712,7 +712,7 @@ class GestorUsuarios {
     }
 
     // Cambiar contraseña del usuario
-    cambiarPasswordUsuario() {
+    async cambiarPasswordUsuario() {
         const usuarioId = document.getElementById('usuarioPasswordId').value;
         const nuevaPassword = document.getElementById('nuevaPassword').value;
         const confirmarPassword = document.getElementById('confirmarPassword').value;
@@ -736,35 +736,55 @@ class GestorUsuarios {
         }
 
         // Actualizar contraseña en Supabase (hash + update)
-        (async () => {
-            try {
-                const client = await window.databaseService.getClient();
-                const { data: hashed, error: hashError } = await client.rpc('hash_password', { password: nuevaPassword });
-                if (hashError || !hashed) throw hashError || new Error('hash_password retornó vacío');
-
-                const usuarioLocal = this.usuarios[usuarioIndex];
-                await client.from('usuarios')
-                    .update({ password_hash: hashed })
-                    .eq('email', usuarioLocal.email);
-            } catch (e) {
-                console.error('❌ Error actualizando contraseña en Supabase:', e);
-                alert('No se pudo actualizar la contraseña en el servidor.');
+        try {
+            if (!window.databaseService || !window.supabaseConfig) {
+                throw new Error('Supabase no disponible');
             }
-        })();
 
-        // Actualizar contraseña en el sistema local (solo para UI/transición)
-        this.usuarios[usuarioIndex].password = nuevaPassword;
-        guardarUsuarios(this.usuarios);
+            const client = await window.supabaseConfig.getSupabaseClient();
 
-        // Cerrar modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('modalCambiarPassword'));
-        modal.hide();
+            // Verificar sesión Auth (necesaria si RLS está activo)
+            try {
+                const { data } = await client.auth.getUser();
+                if (!data?.user) {
+                    throw new Error('No hay sesión activa en Supabase Auth');
+                }
+            } catch (authErr) {
+                console.warn('⚠️ Sesión Auth no verificada:', authErr?.message || authErr);
+            }
 
-        // Mostrar confirmación
-        alert(`Contraseña actualizada correctamente para ${this.usuarios[usuarioIndex].nombre}`);
-        
-        // Recargar tabla
-        this.cargarUsuariosEnTabla();
+            // 1) Hash en el servidor
+            const { data: hashed, error: hashError } = await client.rpc('hash_password', { password: nuevaPassword });
+            if (hashError || !hashed) {
+                throw hashError || new Error('hash_password retornó vacío');
+            }
+
+            // 2) Update por ID (email puede variar/mayúsculas)
+            const { data: updated, error: updError } = await client
+                .from('usuarios')
+                .update({ password_hash: hashed })
+                .eq('id', usuarioId)
+                .select('id')
+                .maybeSingle();
+
+            if (updError) throw updError;
+            if (!updated?.id) throw new Error('No se actualizó ningún registro');
+
+            // No guardar contraseña en localStorage
+            mostrarToast('Contraseña actualizada en Supabase', 'success');
+
+            // Cerrar modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalCambiarPassword'));
+            modal?.hide();
+
+            // Recargar usuarios desde BD para reflejar cambios
+            await this.cargarUsuarios();
+            this.actualizarEstadisticas();
+            this.cargarUsuariosEnTabla();
+        } catch (e) {
+            console.error('❌ Error actualizando contraseña en Supabase:', e);
+            mostrarToast(`No se pudo actualizar en Supabase: ${e?.message || e}`, 'error');
+        }
     }
 
     // Toggle para mostrar/ocultar contraseña
