@@ -231,21 +231,38 @@ async function guardarSesiones(sesiones) {
     try {
         const sesionesEntrada = Array.isArray(sesiones) ? sesiones : [];
 
+        const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+
+        // Obtener auth.uid real (si existe sesión Supabase)
+        let authUid = null;
+        try {
+            if (window.supabaseConfig?.getSupabaseClient) {
+                const client = await window.supabaseConfig.getSupabaseClient();
+                const { data } = await client.auth.getSession();
+                authUid = data?.session?.user?.id || null;
+            }
+        } catch (_) {}
+
         // Si hay databaseService disponible, intentar sincronizar con Supabase
         if (window.databaseService) {
             
             try {
                 // Obtener sesiones existentes en BD para comparar
-                const resultadoBD = await window.databaseService.select('sesiones');
+                const resultadoBD = await window.databaseService.select('sesiones', { noCache: true });
                 const sesionesBD = resultadoBD.success ? resultadoBD.data : [];
                 
                 // Helper: mapear sesión UI -> payload BD
                 const mapSesionToPayload = (s) => {
                     const metodoPagoRaw = s.metodoPago || s.metodo_pago || 'efectivo';
                     const metodoPago = metodoPagoRaw === 'qr' ? 'digital' : metodoPagoRaw;
+
+                    const sessionManagerId = (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null;
+                    const usuarioId = (isUuid(sessionManagerId) ? sessionManagerId : null) || (isUuid(authUid) ? authUid : null);
                     return {
+                    // Si el id ya es UUID, lo enviamos para evitar duplicados. Si no, dejamos que la BD lo genere.
+                    ...(isUuid(s.id) ? { id: s.id } : {}),
                     sala_id: s.salaId || s.sala_id,
-                    usuario_id: (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null,
+                    usuario_id: usuarioId,
                     estacion: s.estacion,
                     cliente: s.cliente,
                     fecha_inicio: s.fecha_inicio || s.inicio || new Date().toISOString(),
@@ -308,6 +325,11 @@ async function guardarSesiones(sesiones) {
                 
             } catch (syncError) {
                 console.warn('  - Error sincronizando con Supabase (no crítico):', syncError);
+                try {
+                    if (typeof window.mostrarNotificacion === 'function') {
+                        window.mostrarNotificacion('No se pudo guardar/leer en Supabase (RLS/permisos).', 'error');
+                    }
+                } catch (_) {}
             }
         }
         
@@ -3939,7 +3961,9 @@ class GestorSalas {
 
         // Crear nueva sesión
         const nuevaSesion = {
-            id: `sesion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+                ? crypto.randomUUID()
+                : `sesion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             salaId: sala.id,
             estacion: estacion,
             cliente: nombreCliente.trim() || 'Genérico',
