@@ -1388,9 +1388,9 @@ class GestorSalas {
         const duracionTotal = Math.ceil((ahora - fechaInicio) / (1000 * 60)); // en minutos
         
         // Calcular costo de tiempo
-        const tarifaTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + 
-                           (sesion.costoAdicional || 0) + 
-                           (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
+        // CORRECCIÓN: Usar costoAdicional SI existe, SINO calcular desde array (para evitar duplicación)
+        const costoExtras = (sesion.costoAdicional || 0) || (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
+        const tarifaTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + costoExtras;
         
         // Calcular costo de productos
         const totalProductos = sesion.productos?.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) || 0;
@@ -1645,9 +1645,9 @@ class GestorSalas {
 
         // Calcular totales para el registro
         const sesion = this.sesiones[sesionIndex];
-        const tarifaTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + 
-                           (sesion.costoAdicional || 0) + 
-                           (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
+        // CORRECCIÓN: Usar costoAdicional SI existe, SINO calcular desde array (para evitar duplicación)
+        const costoExtras = (sesion.costoAdicional || 0) || (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
+        const tarifaTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + costoExtras;
         const totalProductos = sesion.productos?.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) || 0;
         const totalGeneral = tarifaTiempo + totalProductos;
 
@@ -3353,9 +3353,9 @@ class GestorSalas {
         if (!sala) return;
 
         // Calcular totales
-        const tarifaTiempo = (sesion.tarifa_base || 0) + 
-                           (sesion.costoAdicional || 0) + 
-                           (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
+        // CORRECCIÓN: Evitar duplicación de cobro
+        const costoExtras = (sesion.costoAdicional || 0) || (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
+        const tarifaTiempo = (sesion.tarifa_base || 0) + costoExtras;
         
         const totalProductos = sesion.productos?.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) || 0;
         const totalGeneral = tarifaTiempo + totalProductos;
