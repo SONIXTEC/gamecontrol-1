@@ -352,25 +352,7 @@ async function autenticarConSupabase(email, password) {
             };
         }
         
-        const sesionLocal = {
-            id: usuario.id,
-            nombre: usuario.nombre,
-            email: usuario.correo || usuario.email,
-            rol: usuario.rol,
-            permisos: usuario.permisos,
-            fechaLogin: new Date().toISOString(),
-        };
-        
-        console.log('✅ Sesión creada para:', sesionLocal.nombre, 'Rol:', sesionLocal.rol, 'Permisos:', sesionLocal.permisos);
-        
-        try {
-            localStorage.setItem('sesionActual', JSON.stringify(sesionLocal));
-            localStorage.setItem('salas_current_session', JSON.stringify({
-                userId: usuario.id,
-                loginTime: new Date().toISOString(),
-                lastActivity: new Date().toISOString(),
-            }));
-        } catch (_) {}
+        console.log('✅ Sesión creada para:', usuario.nombre, 'Rol:', usuario.rol, 'Permisos:', usuario.permisos);
 
         return { success: true, usuario };
     } catch (error) {

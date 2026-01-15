@@ -277,28 +277,10 @@
         </div>
     </div>
 
-    <!-- Scripts -->
-    <script>
-        // Toggle password visibility
-        document.getElementById('togglePasswordBtn').addEventListener('click', function() {
-            const passwordInput = document.getElementById('password');
-            const icon = this.querySelector('i');
-            
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-            } else {
-                passwordInput.type = 'password';
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
-            }
-        });
-    </script>
-
     <!-- Supabase & App Logic -->
     <script>
         window.SUPABASE_SKIP_CONNECTION_POLL = true;
+        window.NAVIGATION_DISABLE_AUTO_REDIRECT = true;
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
     <script src="js/supabase-config.js"></script>

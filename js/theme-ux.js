@@ -3,7 +3,8 @@
 
 class ThemeUXManager {
     constructor() {
-        this.currentTheme = localStorage.getItem('theme') || 'light';
+        this.themeStore = this.getThemeStore();
+        this.currentTheme = this.themeStore.get('theme') || 'light';
         this.shortcuts = new Map();
         this.tooltips = new Map();
         this.animations = {
@@ -36,7 +37,7 @@ class ThemeUXManager {
     }
 
     detectSystemTheme() {
-        if (!localStorage.getItem('theme')) {
+        if (!this.themeStore.get('theme')) {
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             this.currentTheme = prefersDark ? 'dark' : 'light';
             this.applyTheme(this.currentTheme);
@@ -44,7 +45,7 @@ class ThemeUXManager {
 
         // Escuchar cambios en las preferencias del sistema
         window.matchMedia('(prefers-color-scheme: dark)').addListener((e) => {
-            if (!localStorage.getItem('theme-override')) {
+            if (!this.themeStore.get('theme-override')) {
                 this.currentTheme = e.matches ? 'dark' : 'light';
                 this.applyTheme(this.currentTheme);
             }
@@ -53,7 +54,7 @@ class ThemeUXManager {
 
     applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
+        this.themeStore.set('theme', theme);
         this.currentTheme = theme;
         
         // Actualizar toggle si existe
@@ -70,9 +71,39 @@ class ThemeUXManager {
 
     toggleTheme() {
         const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
-        localStorage.setItem('theme-override', 'true');
+        this.themeStore.set('theme-override', 'true');
         this.applyTheme(newTheme);
         this.showNotification(`Tema ${newTheme === 'dark' ? 'oscuro' : 'claro'} activado`, 'info');
+    }
+
+    getThemeStore() {
+        const memoryStore = (window.__GC_THEME_STORE ||= {});
+        const storageAllowed = () => {
+            try {
+                if (window.SUPABASE_ONLY === true) return false;
+                const testKey = '__gc_theme_test__';
+                window.localStorage.setItem(testKey, '1');
+                window.localStorage.removeItem(testKey);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        };
+
+        return {
+            get: (key) => {
+                if (storageAllowed()) {
+                    try { return window.localStorage.getItem(key); } catch (_) { /* noop */ }
+                }
+                return memoryStore[key] || null;
+            },
+            set: (key, value) => {
+                memoryStore[key] = String(value);
+                if (storageAllowed()) {
+                    try { window.localStorage.setItem(key, String(value)); } catch (_) { /* noop */ }
+                }
+            }
+        };
     }
 
     animateThemeTransition() {

@@ -127,43 +127,6 @@ async function obtenerSalas() {
             
             let filas = Array.isArray(resultado.data) ? resultado.data : [];
 
-            // Si no hay sesiones en BD pero existen en local (escenario inicial), migrar una sola vez
-            try {
-                const migrado = localStorage.getItem('sesiones_migradas_supabase') === '1';
-                const sesionesLocal = JSON.parse(localStorage.getItem('sesiones') || '[]');
-                if (filas.length === 0 && sesionesLocal.length > 0 && !migrado) {
-                    console.log('📤 Migrando sesiones locales a Supabase (una sola vez)...');
-                    for (const s of sesionesLocal) {
-                        const payload = {
-                            sala_id: s.salaId,
-                            usuario_id: (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null,
-                            estacion: s.estacion,
-                            cliente: s.cliente,
-                            fecha_inicio: s.fecha_inicio || s.inicio || new Date().toISOString(),
-                            fecha_fin: s.fecha_fin || s.fin || null,
-                            tiempo_contratado: s.tiempoOriginal || s.tiempo || 60,
-                            tiempo_adicional: s.tiempoAdicional || 0,
-                            tarifa_base: s.tarifa || s.tarifa_base || 0,
-                            costo_adicional: s.costoAdicional || 0,
-                            total_tiempo: s.totalTiempo || 0,
-                            total_productos: s.totalProductos || 0,
-                            total_general: s.totalGeneral || 0,
-                            descuento: s.descuento || 0,
-                            metodo_pago: s.metodoPago || 'efectivo',
-                            estado: s.finalizada ? 'finalizada' : (s.estado || 'activa'),
-                            finalizada: !!s.finalizada,
-                            productos: s.productos || [],
-                            tiempos_adicionales: s.tiemposAdicionales || [],
-                            notas: s.notas || null,
-                            vendedor: s.vendedor || null
-                        };
-                        try { await window.databaseService.insert('sesiones', payload); } catch (_) {}
-                    }
-                    localStorage.setItem('sesiones_migradas_supabase', '1');
-                    const refresco = await window.databaseService.select('sesiones', { ordenPor: { campo: 'fecha_inicio', direccion: 'desc' } });
-                    filas = refresco && refresco.success ? (refresco.data || []) : [];
-                }
-            } catch (migErr) { console.warn('⚠️ Migración sesiones fallida:', migErr?.message || migErr); }
             console.log('  - Filas obtenidas:', filas);
             
             // Mapear columnas de BD -> formato de UI
@@ -189,24 +152,7 @@ async function obtenerSalas() {
             return salasMapeadas;
         }
         
-        // Fallback a localStorage
-        console.log('  - Usando localStorage fallback...');
-        const salasRaw = localStorage.getItem('salas');
-        console.log('  - Raw localStorage salas:', salasRaw);
-        
-        if (!salasRaw) {
-            console.log('  - No hay datos de salas en localStorage');
-            return [];
-        }
-        
-        try {
-            const salas = JSON.parse(salasRaw);
-            console.log('  - Salas parseadas desde localStorage:', salas);
-            return Array.isArray(salas) ? salas : [];
-        } catch (error) {
-            console.error('  - Error parseando salas desde localStorage:', error);
-            return [];
-        }
+        return [];
     } catch (error) {
         console.error('❌ Error al obtener salas:', error);
         return [];
@@ -218,11 +164,9 @@ async function guardarSalas(salas) {
         // Evitar inserts duplicados en remoto desde este método.
         // La creación en remoto se maneja en el flujo de creación de sala.
         
-        // Fallback a localStorage
-        localStorage.setItem('salas', JSON.stringify(salas));
+        // Supabase-only: no persistir en localStorage
     } catch (error) {
         console.error('Error guardando salas:', error);
-        localStorage.setItem('salas', JSON.stringify(salas));
     }
 }
 
@@ -235,7 +179,8 @@ async function obtenerSesiones() {
             
             // Obtener TODAS las sesiones (no solo las no finalizadas)
             const resultado = await window.databaseService.select('sesiones', {
-                ordenPor: { campo: 'fecha_inicio', direccion: 'desc' }
+                ordenPor: { campo: 'fecha_inicio', direccion: 'desc' },
+                noCache: true
             });
             
             console.log('  - Resultado databaseService:', resultado);
@@ -262,7 +207,8 @@ async function obtenerSesiones() {
                 costoAdicional: row.costo_adicional ?? 0,
                 productos: row.productos || [],
                 tiemposAdicionales: row.tiempos_adicionales || [],
-                finalizada: !!row.finalizada
+                estado: row.estado || (row.finalizada ? 'finalizada' : 'activa'),
+                finalizada: row.finalizada === true || row.estado === 'finalizada' || row.estado === 'cerrada'
             }));
             
             console.log('  - Sesiones mapeadas desde BD:', sesionesMapeadas);
@@ -273,22 +219,10 @@ async function obtenerSesiones() {
             return sesionesCombinadas;
         }
         
-        // Fallback a localStorage
-        console.log('  - Usando localStorage fallback...');
-        const sesiones = JSON.parse(localStorage.getItem('sesiones') || '[]');
-        console.log('  - Sesiones desde localStorage:', sesiones);
-        return Array.isArray(sesiones) ? sesiones : [];
+        return [];
     } catch (error) {
         console.error('❌ Error al obtener sesiones:', error);
-        // En caso de error, usar localStorage como fallback
-        try {
-            const sesiones = JSON.parse(localStorage.getItem('sesiones') || '[]');
-            console.log('  - Fallback a localStorage por error:', sesiones);
-            return Array.isArray(sesiones) ? sesiones : [];
-        } catch (fallbackError) {
-            console.error('❌ Error en fallback localStorage:', fallbackError);
-            return [];
-        }
+        return [];
     }
 }
 
@@ -374,8 +308,7 @@ async function guardarSesiones(sesiones) {
                     }
                 }
                 
-                // Repersistir local por si ids cambiaron a los remotos
-                localStorage.setItem('sesiones', JSON.stringify(sesiones));
+                // Supabase-only: no persistir en localStorage
                 
             } catch (syncError) {
                 console.warn('  - Error sincronizando con Supabase (no crítico):', syncError);
@@ -385,12 +318,6 @@ async function guardarSesiones(sesiones) {
         console.log('✅ guardarSesiones() completado');
     } catch (error) {
         console.error('❌ Error guardando sesiones:', error);
-        // Asegurar que al menos se guarde en localStorage
-        try {
-            localStorage.setItem('sesiones', JSON.stringify(sesiones));
-        } catch (fallbackError) {
-            console.error('❌ Error crítico en fallback localStorage:', fallbackError);
-        }
     }
 }
 
@@ -697,13 +624,13 @@ class GestorSalas {
         try {
             console.log('🔍 DEBUG verificarIntegridadDatos() iniciando...');
             
-            // Verificar sesiones en localStorage
-            const sesionesLocal = JSON.parse(localStorage.getItem('sesiones') || '[]');
-            console.log('  - Sesiones en localStorage:', sesionesLocal.length);
+            // Verificar sesiones en memoria
+            const sesionesMem = Array.isArray(this.sesiones) ? this.sesiones : [];
+            console.log('  - Sesiones en memoria:', sesionesMem.length);
             
             // Verificar que no haya sesiones duplicadas
             const idsUnicos = new Set();
-            const sesionesSinDuplicados = sesionesLocal.filter(sesion => {
+            const sesionesSinDuplicados = sesionesMem.filter(sesion => {
                 if (idsUnicos.has(sesion.id)) {
                     console.log('  - ⚠️ Sesión duplicada encontrada y removida:', sesion.id);
                     return false;
@@ -711,11 +638,6 @@ class GestorSalas {
                 idsUnicos.add(sesion.id);
                 return true;
             });
-            
-            if (sesionesSinDuplicados.length !== sesionesLocal.length) {
-                console.log('  - Limpiando sesiones duplicadas...');
-                localStorage.setItem('sesiones', JSON.stringify(sesionesSinDuplicados));
-            }
             
             // Verificar que las sesiones activas tengan campos requeridos
             const sesionesActivas = sesionesSinDuplicados.filter(s => !s.finalizada);

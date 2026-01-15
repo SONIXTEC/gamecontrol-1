@@ -10,7 +10,8 @@
     <script>
         (function(){
             try {
-                var t = localStorage.getItem('theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                var store = window.__GC_THEME_STORE || {};
+                var t = store.theme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.setAttribute('data-theme', t);
             } catch(e) {}
         })();
@@ -480,6 +481,15 @@
     <!-- ===== VERIFICACIÓN DE AUTENTICACIÓN FINAL ===== -->
     <script>
         // Verificación final que usa navigation-utils
+        function syncSalasThemeClass() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            document.body.classList.toggle('salas-mejora', isDark);
+        }
+
+        // Sincronizar al cargar y ante cambios de tema
+        document.addEventListener('DOMContentLoaded', syncSalasThemeClass);
+        window.addEventListener('themeChanged', syncSalasThemeClass);
+
         window.addEventListener('load', function() {
             console.log('🔍 Verificación final de autenticación en salas.html...');
             
@@ -488,13 +498,18 @@
                 if (window.navigationUtils && window.navigationUtils.checkAndRedirectIfNeeded) {
                     console.log('ℹ️ Usando navigation-utils para verificación de autenticación');
                     window.navigationUtils.checkAndRedirectIfNeeded();
-                } else {
-                    console.log('⚠️ navigation-utils no disponible, verificando manualmente');
-                    const sesionLocal = localStorage.getItem('sesionActual');
-                    if (!sesionLocal) {
-                        console.log('❌ No hay sesión, redirigiendo al login...');
-                        window.location.href = '../login.html';
-                    }
+                } else if (window.supabaseConfig?.getSupabaseClient) {
+                    console.log('⚠️ navigation-utils no disponible, verificando con Supabase');
+                    window.supabaseConfig.getSupabaseClient().then(client => client.auth.getSession())
+                        .then(({ data }) => {
+                            if (!data?.session) {
+                                console.log('❌ No hay sesión, redirigiendo al login...');
+                                window.location.href = '../login.html';
+                            }
+                        })
+                        .catch(() => {
+                            window.location.href = '../login.html';
+                        });
                 }
                 
                 // Inicializar menú móvil simplificado

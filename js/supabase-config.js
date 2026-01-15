@@ -6,6 +6,51 @@
 console.log('📦 Cargando supabase-config.js...');
 
 // ===================================================================
+// SUPABASE-ONLY: bloquear almacenamiento local para datos de la app
+// ===================================================================
+
+// Activar modo Supabase-only por defecto
+window.SUPABASE_ONLY = true;
+
+// Bloquear uso de localStorage excepto claves de Supabase Auth
+try {
+    if (window.SUPABASE_ONLY && !window.__GC_SUPABASE_STORAGE_GUARD__) {
+        window.__GC_SUPABASE_STORAGE_GUARD__ = true;
+        const allowPrefixes = ['sb-'];
+        const allowKeys = new Set();
+        const storage = window.localStorage;
+        const isAllowed = (key) => {
+            if (!key) return false;
+            if (allowKeys.has(key)) return true;
+            return allowPrefixes.some(prefix => String(key).startsWith(prefix));
+        };
+
+        const originalGet = storage.getItem.bind(storage);
+        const originalSet = storage.setItem.bind(storage);
+        const originalRemove = storage.removeItem.bind(storage);
+
+        storage.getItem = function(key) {
+            if (!isAllowed(key)) return null;
+            return originalGet(key);
+        };
+        storage.setItem = function(key, value) {
+            if (!isAllowed(key)) {
+                console.warn('⛔ Supabase-only: bloqueado localStorage.setItem para', key);
+                return;
+            }
+            return originalSet(key, value);
+        };
+        storage.removeItem = function(key) {
+            if (!isAllowed(key)) {
+                console.warn('⛔ Supabase-only: bloqueado localStorage.removeItem para', key);
+                return;
+            }
+            return originalRemove(key);
+        };
+    }
+} catch (_) {}
+
+// ===================================================================
 // CONFIGURACIÓN DE SUPABASE
 // ===================================================================
 

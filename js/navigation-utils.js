@@ -172,49 +172,23 @@ class NavigationUtils {
 
     // Verificar si una sesión debe redirigir (prioriza sesión de Supabase)
     async checkAndRedirectIfNeeded() {
-        // Verificar localStorage primero (más confiable para nuestro sistema)
-        const sesionLocal = localStorage.getItem('sesionActual');
         let hasSession = false;
-        
-        if (sesionLocal) {
-            try {
-                const sesion = JSON.parse(sesionLocal);
-                const fechaLogin = new Date(sesion.fechaLogin);
-                const ahora = new Date();
-                const horasTranscurridas = (ahora - fechaLogin) / (1000 * 60 * 60);
-                
-                if (horasTranscurridas <= 8) {
-                    hasSession = true;
-                    console.log('🔐 Sesión válida encontrada en localStorage:', sesion.nombre);
-                } else {
-                    console.log('⚠️ Sesión de localStorage expirada, limpiando...');
-                    localStorage.removeItem('sesionActual');
-                }
-            } catch (error) {
-                console.log('❌ Error parseando sesión de localStorage, limpiando...');
-                localStorage.removeItem('sesionActual');
+        try {
+            if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+                console.log('🌐 Offline detectado: no se puede validar sesión');
+                throw new Error('Offline');
             }
-        }
-
-        // Solo verificar Supabase si no hay sesión en localStorage
-        if (!hasSession) {
-            try {
-                if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
-                    console.log('🌐 Offline detectado: omitiendo verificación de sesión en Supabase');
-                    throw new Error('Offline');
+            if (window.supabaseConfig && typeof window.supabaseConfig.getSupabaseClient === 'function') {
+                const client = await window.supabaseConfig.getSupabaseClient();
+                if (client && client.auth && typeof client.auth.getSession === 'function') {
+                    const { data } = await client.auth.getSession();
+                    const supabaseSession = data && data.session ? data.session : null;
+                    hasSession = !!supabaseSession;
+                    console.log('🔐 Estado de sesión (Supabase):', hasSession);
                 }
-                if (window.supabaseConfig && typeof window.supabaseConfig.getSupabaseClient === 'function') {
-                    const client = await window.supabaseConfig.getSupabaseClient();
-                    if (client && client.auth && typeof client.auth.getSession === 'function') {
-                        const { data } = await client.auth.getSession();
-                        const supabaseSession = data && data.session ? data.session : null;
-                        hasSession = !!supabaseSession;
-                        console.log('🔐 Estado de sesión (Supabase):', hasSession);
-                    }
-                }
-            } catch (error) {
-                console.warn('⚠️ No se pudo verificar sesión de Supabase:', error);
             }
+        } catch (error) {
+            console.warn('⚠️ No se pudo verificar sesión de Supabase:', error);
         }
 
         if (this.isLoginPage && hasSession) {
@@ -254,7 +228,6 @@ class NavigationUtils {
         console.log('- Login Path:', this.getLoginPath());
         console.log('- Index Path:', this.getIndexPath());
         console.log('- Base URL:', this.getBaseUrl());
-        console.log('- Session Exists:', !!localStorage.getItem('sesionActual'));
     }
 }
 
@@ -305,6 +278,11 @@ window.loginExitosoInteligente = function() {
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 NavigationUtils cargado');
+
+    if (window.NAVIGATION_DISABLE_AUTO_REDIRECT) {
+        console.log('⏸️ Auto-redirect deshabilitado por configuración global');
+        return;
+    }
     
     // Verificar y redirigir si es necesario (espera breve para que Supabase inicialice)
     setTimeout(() => {

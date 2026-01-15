@@ -71,15 +71,12 @@ function applyBypassUI(user) {
 
 function initBypassAuth() {
     const user = getBypassUser();
-    // Persistir para compatibilidad con verificarAutenticacion()
-    localStorage.setItem('sesionActual', JSON.stringify(user));
     // Crear un sessionManager mínimo
     window.sessionManager = {
         isAuthenticated: () => true,
         getCurrentUser: () => user,
         updateUserInterface: () => applyBypassUI(user),
         logout: () => {
-            localStorage.removeItem('sesionActual');
             try { window.location.href = 'login.html'; } catch (_) { /* noop */ }
         }
     };
@@ -172,34 +169,6 @@ class SupabaseAuthSystem {
                 console.log('⚠️ Error con Supabase Auth, verificando localStorage...');
             }
             
-            // Fallback: verificar localStorage
-            const sesionLocal = localStorage.getItem('sesionActual');
-            if (sesionLocal) {
-                try {
-                    const sesion = JSON.parse(sesionLocal);
-                    console.log('✅ Sesión de localStorage encontrada:', sesion.nombre);
-                    
-                    // Verificar que la sesión no haya expirado (8 horas)
-                    const fechaLogin = new Date(sesion.fechaLogin);
-                    const ahora = new Date();
-                    const horasTranscurridas = (ahora - fechaLogin) / (1000 * 60 * 60);
-                    
-                    if (horasTranscurridas <= 8) {
-                        this.currentUser = sesion;
-                        console.log('✅ Sesión de localStorage válida, usuario:', sesion);
-                        this.updateUserInterface();
-                        this.checkPagePermissions();
-                        return;
-                    } else {
-                        console.log('⚠️ Sesión de localStorage expirada');
-                        localStorage.removeItem('sesionActual');
-                    }
-                } catch (parseError) {
-                    console.error('❌ Error parseando sesión de localStorage:', parseError);
-                    localStorage.removeItem('sesionActual');
-                }
-            }
-            
             console.log('ℹ️ No hay sesión activa, redirigiendo a login...');
             this.redirectToLogin();
             
@@ -215,17 +184,11 @@ class SupabaseAuthSystem {
             this.currentSession = session;
             
             // Obtener datos del usuario desde la base de datos
-            const userData = await this.getUserData(session.user.id);
+            const userData = await this.getUserData(session.user.id, session.user?.email);
             
             if (userData) {
                 this.currentUser = userData;
                 console.log('✅ Usuario obtenido de BD:', userData);
-                
-                // Guardar en localStorage como fallback
-                localStorage.setItem('sesionActual', JSON.stringify({
-                    ...userData,
-                    fechaLogin: new Date().toISOString()
-                }));
                 
                 this.updateUserInterface();
                 this.checkPagePermissions();
@@ -240,7 +203,7 @@ class SupabaseAuthSystem {
     }
 
     // Obtener datos del usuario
-    async getUserData(userId) {
+    async getUserData(userId, email) {
         try {
             const { data, error } = await this.client
                 .from('usuarios')
@@ -249,11 +212,28 @@ class SupabaseAuthSystem {
                 .eq('estado', 'activo')
                 .single();
 
+            if (!error && data) {
+                return data;
+            }
+            // Fallback por email cuando el id no coincide con la tabla legacy
+            if (email) {
+                const { data: dataByEmail, error: emailError } = await this.client
+                    .from('usuarios')
+                    .select('*')
+                    .eq('email', email)
+                    .eq('estado', 'activo')
+                    .single();
+
+                if (!emailError && dataByEmail) {
+                    return dataByEmail;
+                }
+            }
+
             if (error) {
                 throw error;
             }
 
-            return data;
+            return null;
         } catch (error) {
             console.error('Error obteniendo datos del usuario:', error);
             return null;
@@ -339,12 +319,6 @@ class SupabaseAuthSystem {
             }
 
             this.currentUser = usuario;
-            
-            // Guardar en localStorage
-            localStorage.setItem('sesionActual', JSON.stringify({
-                ...usuario,
-                fechaLogin: new Date().toISOString()
-            }));
             
             this.updateUserInterface();
             
@@ -680,26 +654,6 @@ class SupabaseAuthSystem {
         if (this.currentSession && this.currentUser) {
             return true;
         }
-        
-        // Verificar sesión de localStorage como fallback
-        const sesionLocal = localStorage.getItem('sesionActual');
-        if (sesionLocal) {
-            try {
-                const sesion = JSON.parse(sesionLocal);
-                const fechaLogin = new Date(sesion.fechaLogin);
-                const ahora = new Date();
-                const horasTranscurridas = (ahora - fechaLogin) / (1000 * 60 * 60);
-                
-                if (horasTranscurridas <= 8) {
-                    return true;
-                } else {
-                    localStorage.removeItem('sesionActual');
-                }
-            } catch (error) {
-                localStorage.removeItem('sesionActual');
-            }
-        }
-        
         return false;
     }
 }
@@ -722,32 +676,6 @@ function verificarAutenticacion() {
                 permisos: user.permisos || {},
                 fechaLogin: new Date().toISOString()
             };
-        }
-    }
-    
-    // Fallback: verificar localStorage
-    const sesionLocal = localStorage.getItem('sesionActual');
-    if (sesionLocal) {
-        try {
-            const sesion = JSON.parse(sesionLocal);
-            const fechaLogin = new Date(sesion.fechaLogin);
-            const ahora = new Date();
-            const horasTranscurridas = (ahora - fechaLogin) / (1000 * 60 * 60);
-            
-            if (horasTranscurridas <= 8) {
-                return {
-                    id: sesion.id,
-                    nombre: sesion.nombre,
-                    email: sesion.email,
-                    rol: sesion.rol,
-                    permisos: sesion.permisos || {},
-                    fechaLogin: sesion.fechaLogin
-                };
-            } else {
-                localStorage.removeItem('sesionActual');
-            }
-        } catch (error) {
-            localStorage.removeItem('sesionActual');
         }
     }
     

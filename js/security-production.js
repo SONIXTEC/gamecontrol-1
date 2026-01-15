@@ -9,30 +9,46 @@
     'use strict';
 
     // 1. Enforce Authentication
-    function checkAuth() {
+    async function checkAuth() {
         const isLoginPage = window.location.pathname.includes('login.html') || 
                            window.location.pathname.includes('login_mobile.html');
-        
-        // Check Supabase session or local marker
-        const session = localStorage.getItem('sesionActual') || 
-                       localStorage.getItem('sb-access-token'); // Adjust based on your Supabase key
+        if (isLoginPage) return;
 
-        if (!session && !isLoginPage) {
-            console.warn('⛔ Acceso no autorizado. Redirigiendo al login...');
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const target = isMobile ? 'login_mobile.html' : 'login.html';
-            
-            // Handle path relative to /pages/
-            if (window.location.pathname.includes('/pages/')) {
-                window.location.href = '../' + target;
-            } else {
-                window.location.href = target;
+        try {
+            if (!window.supabaseConfig?.getSupabaseClient) {
+                setTimeout(checkAuth, 500);
+                return;
             }
+            const client = await window.supabaseConfig.getSupabaseClient();
+            const { data } = await client.auth.getSession();
+            const session = data && data.session ? data.session : null;
+
+            if (!session) {
+                console.warn('⛔ Acceso no autorizado. Redirigiendo al login...');
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                const target = isMobile ? 'login_mobile.html' : 'login.html';
+                
+                // Handle path relative to /pages/
+                if (window.location.pathname.includes('/pages/')) {
+                    window.location.href = '../' + target;
+                } else {
+                    window.location.href = target;
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ No se pudo verificar sesión con Supabase:', e);
         }
     }
 
     // Run auth check immediately
     checkAuth();
+
+    // Revalidar cuando Supabase esté listo
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', checkAuth);
+    } else {
+        setTimeout(checkAuth, 300);
+    }
 
     // 2. Developer Tools & Context Menu
     // Por defecto NO se bloquean (para depurar). Si quieres activar bloqueo en producción,

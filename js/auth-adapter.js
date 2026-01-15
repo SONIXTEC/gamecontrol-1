@@ -7,10 +7,11 @@ class AuthAdapter {
     constructor() {
         this.db = null;
         this.modoLocal = false;
+        this.currentSessionData = null;
         this.inicializar();
     }
 
-    inicializar() {
+    async inicializar() {
         // Intentar obtener el servicio de base de datos
         if (typeof window !== 'undefined' && window.databaseService) {
             this.db = window.databaseService;
@@ -21,6 +22,25 @@ class AuthAdapter {
             this.modoLocal = true;
             console.warn('⚠️ AuthAdapter: Sin DatabaseService (modo Supabase-only no disponible)');
         }
+
+        // Sincronizar sesión existente desde Supabase Auth (sin localStorage)
+        try {
+            if (window.supabaseConfig?.getSupabaseClient) {
+                const client = await window.supabaseConfig.getSupabaseClient();
+                const { data } = await client.auth.getSession();
+                if (data?.session?.user) {
+                    this.currentSessionData = {
+                        id: data.session.user.id,
+                        nombre: data.session.user.user_metadata?.nombre || data.session.user.email?.split('@')[0] || 'Usuario',
+                        email: data.session.user.email,
+                        rol: 'operador',
+                        permisos: {},
+                        fechaLogin: new Date().toISOString(),
+                        origen: 'supabase'
+                    };
+                }
+            }
+        } catch (_) {}
     }
 
     // ===================================================================
@@ -63,16 +83,8 @@ class AuthAdapter {
             origen: origen // 'supabase' o 'local'
         };
 
-        // Guardar sesión en localStorage para compatibilidad
-        localStorage.setItem('sesionActual', JSON.stringify(sesionData));
-
-        // También crear sesión para el sistema existente
-        const sesionSistema = {
-            userId: usuario.id,
-            loginTime: new Date().toISOString(),
-            lastActivity: new Date().toISOString()
-        };
-        localStorage.setItem('salas_current_session', JSON.stringify(sesionSistema));
+        // Guardar sesión solo en memoria (Supabase maneja persistencia)
+        this.currentSessionData = sesionData;
 
         console.log(`✅ Sesión creada (${origen}):`, sesionData.nombre);
         return { success: true, data: sesionData };
@@ -186,13 +198,7 @@ class AuthAdapter {
     // ===================================================================
 
     obtenerSesionActual() {
-        try {
-            const sesion = localStorage.getItem('sesionActual');
-            return sesion ? JSON.parse(sesion) : null;
-        } catch (error) {
-            console.error('❌ Error obteniendo sesión:', error);
-            return null;
-        }
+        return this.currentSessionData;
     }
 
     estaAutenticado() {
@@ -208,8 +214,7 @@ class AuthAdapter {
     }
 
     cerrarSesion() {
-        localStorage.removeItem('sesionActual');
-        localStorage.removeItem('salas_current_session');
+        this.currentSessionData = null;
         console.log('✅ Sesión cerrada');
     }
 

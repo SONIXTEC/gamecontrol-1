@@ -15,10 +15,21 @@ let lockoutUntil = 0;
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🔐 Inicializando sistema de login...');
 
+  // Fallback para evitar que el loader se quede demasiado tiempo
+  let initFinalizado = false;
+  const fallbackMostrarFormulario = setTimeout(() => {
+    if (!initFinalizado && !window.isRedirecting) {
+      console.warn('⏳ Inicialización lenta. Mostrando formulario de login.');
+      mostrarFormularioLogin();
+    }
+  }, 1200);
+
   try {
     // Si no hay conexión, evitar bucles y mostrar error claro
     if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
       mostrarErrorConexion();
+      initFinalizado = true;
+      clearTimeout(fallbackMostrarFormulario);
       return;
     }
     // Esperar a que Supabase esté disponible
@@ -39,15 +50,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     mostrarInformacionSistema();
 
     console.log('✅ Sistema de login inicializado correctamente');
+    initFinalizado = true;
+    clearTimeout(fallbackMostrarFormulario);
   } catch (error) {
     if (error.message === 'REDIRECTING') {
         console.log('🔄 Redirigiendo a dashboard...');
+        initFinalizado = true;
+        clearTimeout(fallbackMostrarFormulario);
         return;
     }
     console.error('❌ Error inicializando login:', error);
     mostrarErrorConexion();
     // En caso de error, mostrar el formulario para permitir reintentar o ver el error
     mostrarFormularioLogin();
+    initFinalizado = true;
+    clearTimeout(fallbackMostrarFormulario);
   }
 });
 
@@ -120,22 +137,12 @@ async function verificarSesionExistente() {
       throw new Error('REDIRECTING'); 
     }
 
-    // 2. Verificar si hay token en localStorage pero getSession falló (posible latencia)
-    // El key por defecto es sb-<project-ref>-auth-token
-    const projectRef = 'stjbtxrrdofuxhigxfcy';
-    const hasToken = localStorage.getItem(`sb-${projectRef}-auth-token`);
-    
-    if (hasToken) {
-        console.log('⏳ Token encontrado en storage, esperando posible restauración...');
-        // Dar un momento para que el listener de onAuthStateChange dispare si es válido
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Verificar de nuevo
-        const { data: { session: sessionRetry } } = await client.auth.getSession();
-        if (sessionRetry) {
-            handleLoginSuccess();
-            throw new Error('REDIRECTING');
-        }
+    // 2. Verificar de nuevo tras un breve delay para cubrir latencias
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const { data: { session: sessionRetry } } = await client.auth.getSession();
+    if (sessionRetry) {
+      handleLoginSuccess();
+      throw new Error('REDIRECTING');
     }
 
   } catch (error) {
@@ -233,13 +240,17 @@ async function manejarLogin(e) {
       loginAttempts = 0;
       lockoutUntil = 0;
       mostrarAlerta('success', `¡Bienvenido ${resultado.usuario.nombre}!`);
-      setTimeout(() => {
-        if (window.navigationUtils?.loginSuccess) {
-          window.navigationUtils.loginSuccess();
-        } else {
-          window.location.href = 'index.html';
-        }
-      }, 800);
+      // Evitar doble redirección si onAuthStateChange ya se disparó
+      if (!window.isRedirecting) {
+        window.isRedirecting = true;
+        setTimeout(() => {
+          if (window.navigationUtils?.loginSuccess) {
+            window.navigationUtils.loginSuccess();
+          } else {
+            window.location.href = 'index.html';
+          }
+        }, 300);
+      }
     } else {
       loginAttempts += 1;
       if (loginAttempts >= 5) {
@@ -375,25 +386,6 @@ async function autenticarConSupabase(email, password) {
       await client.auth.signOut();
       return { success: false, error: 'Tu cuenta está desactivada o suspendida.' };
     }
-
-    // 4) Persistir sesión local (respaldo)
-    const sesionLocal = {
-      id: usuario.id,
-      nombre: usuario.nombre,
-      email: usuario.email,
-      rol: usuario.rol,
-      permisos: usuario.permisos || {},
-      fechaLogin: new Date().toISOString(),
-    };
-    
-    try {
-      localStorage.setItem('sesionActual', JSON.stringify(sesionLocal));
-      localStorage.setItem('salas_current_session', JSON.stringify({
-        userId: usuario.id,
-        loginTime: new Date().toISOString(),
-        lastActivity: new Date().toISOString(),
-      }));
-    } catch (_) {}
 
     return { success: true, usuario };
 
