@@ -2,18 +2,15 @@
 
 // Importar funciones del sistema principal
 function obtenerSesiones() {
-    const sesiones = localStorage.getItem('sesiones');
-    return sesiones ? JSON.parse(sesiones) : [];
+    return [];
 }
 
 function obtenerSalas() {
-    const salas = localStorage.getItem('salas');
-    return salas ? JSON.parse(salas) : [];
+    return [];
 }
 
 function obtenerConfiguracion() {
-    const config = localStorage.getItem('configuracion');
-    return config ? JSON.parse(config) : {
+    return {
         tarifasPorSala: {},
         tarifasPorTipo: {},
         moneda: 'COP'
@@ -55,8 +52,8 @@ function formatearTiempo(minutos) {
 
 class GestorVentas {
     constructor() {
-        this.sesiones = obtenerSesiones();
-        this.salas = obtenerSalas();
+        this.sesiones = [];
+        this.salas = [];
         this.config = obtenerConfiguracion();
         this.filtrosActivos = {
             periodo: 'mes',
@@ -69,33 +66,75 @@ class GestorVentas {
     }
 
     init() {
-        // Asegurar catálogo de salas desde Supabase si localStorage está vacío
-        this.ensureSalasCatalogo().then(() => {
+        // Cargar datos desde Supabase y activar tiempo real
+        this.cargarDesdeSupabase().then(() => {
             this.cargarOpcionesSalas();
             this.configurarEventListeners();
             this.aplicarFiltrosPorDefecto();
             this.actualizarEstadisticas();
             this.actualizarHistorialVentas();
+            this.configurarRealtimeSesiones();
         });
     }
 
-    async ensureSalasCatalogo() {
+    async cargarDesdeSupabase() {
         try {
-            if (Array.isArray(this.salas) && this.salas.length > 0) return;
             if (typeof window !== 'undefined' && window.databaseService) {
-                const res = await window.databaseService.select('salas');
-                if (res && res.success && Array.isArray(res.data)) {
-                    // Normalizar a { id, nombre }
-                    const normalizadas = res.data.map(s => ({
-                        id: s.id || s.uuid || s.slug || s.nombre, // fallback si no hay id
+                const [resSalas, resSesiones] = await Promise.all([
+                    window.databaseService.select('salas', { ordenPor: { campo: 'nombre', direccion: 'asc' }, noCache: true }),
+                    window.databaseService.select('sesiones', { ordenPor: { campo: 'fecha_inicio', direccion: 'desc' }, noCache: true })
+                ]);
+
+                if (resSalas && resSalas.success && Array.isArray(resSalas.data)) {
+                    this.salas = resSalas.data.map(s => ({
+                        id: s.id || s.uuid || s.slug || s.nombre,
                         nombre: s.nombre || s.name || s.titulo || 'Sala'
                     }));
-                    this.salas = normalizadas;
-                    try { localStorage.setItem('salas', JSON.stringify(this.salas)); } catch (_) {}
+                }
+
+                if (resSesiones && resSesiones.success && Array.isArray(resSesiones.data)) {
+                    this.sesiones = resSesiones.data.map(row => ({
+                        id: row.id,
+                        salaId: row.sala_id || row.salaId,
+                        salaNombre: row.sala_nombre || row.salaNombre || null,
+                        estacion: row.estacion,
+                        cliente: row.cliente,
+                        fecha_inicio: row.fecha_inicio,
+                        fecha_fin: row.fecha_fin,
+                        metodoPago: row.metodo_pago || row.metodoPago || 'efectivo',
+                        tarifa_base: row.tarifa_base ?? row.tarifa ?? 0,
+                        tarifa: row.tarifa_base ?? row.tarifa ?? 0,
+                        costoAdicional: row.costo_adicional ?? 0,
+                        tiemposAdicionales: row.tiempos_adicionales || [],
+                        productos: row.productos || [],
+                        totalGeneral: row.total_general ?? row.totalGeneral,
+                        finalizada: row.finalizada === true || row.estado === 'finalizada' || row.estado === 'cerrada',
+                        estado: row.estado || (row.finalizada ? 'finalizada' : 'activa')
+                    }));
                 }
             }
         } catch (e) {
-            console.warn('No fue posible cargar salas desde Supabase:', e?.message || e);
+            console.warn('No fue posible cargar datos desde Supabase:', e?.message || e);
+        }
+    }
+
+    async configurarRealtimeSesiones() {
+        try {
+            if (!window.supabaseConfig?.getSupabaseClient) return;
+            const client = await window.supabaseConfig.getSupabaseClient();
+            if (!client) return;
+
+            if (this._sesionesRT) return;
+            this._sesionesRT = client
+                .channel('ventas-sesiones-rt')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'sesiones' }, async () => {
+                    await this.cargarDesdeSupabase();
+                    this.actualizarEstadisticas();
+                    this.actualizarHistorialVentas();
+                })
+                .subscribe();
+        } catch (e) {
+            console.warn('⚠️ No se pudo configurar realtime de ventas:', e?.message || e);
         }
     }
 
@@ -346,6 +385,9 @@ class GestorVentas {
                             <button class="btn btn-sm btn-outline-success" onclick="window.gestorVentas.imprimirFactura('${sesion.id}')" title="Imprimir">
                                 <i class="fas fa-print"></i>
                             </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="window.gestorVentas.eliminarRegistro('${sesion.id}')" title="Eliminar">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -354,6 +396,27 @@ class GestorVentas {
 
         // Actualizar información de paginación
         this.actualizarInfoPaginacion(sesiones.length);
+    }
+
+    async eliminarRegistro(sesionId) {
+        const sesion = this.sesiones.find(s => s.id === sesionId);
+        if (!sesion) return;
+
+        const confirmado = window.confirm('¿Eliminar este registro de venta? Esta acción no se puede deshacer.');
+        if (!confirmado) return;
+
+        try {
+            if (window.databaseService) {
+                await window.databaseService.delete('sesiones', sesionId);
+            }
+            // Actualizar memoria local y UI
+            this.sesiones = this.sesiones.filter(s => s.id !== sesionId);
+            this.actualizarEstadisticas();
+            this.actualizarHistorialVentas();
+        } catch (e) {
+            console.warn('⚠️ No se pudo eliminar el registro:', e?.message || e);
+            alert('No se pudo eliminar el registro. Revisa permisos en Supabase.');
+        }
     }
 
     obtenerNombreMetodoPago(metodo) {

@@ -494,6 +494,9 @@ class GestorSalas {
     async inicializarDatos() {
         try {
             console.log('🔧 inicializarDatos() iniciando...');
+
+            // Esperar sesión de Supabase para evitar cargas vacías tras login
+            await this.esperarSesionAuth();
             
             console.log('  - Obteniendo salas...');
             this.salas = await obtenerSalas();
@@ -510,6 +513,21 @@ class GestorSalas {
         } catch (error) {
             console.error('❌ Error inicializando datos:', error);
         }
+    }
+
+    async esperarSesionAuth(timeoutMs = 2500) {
+        try {
+            if (!window.supabaseConfig?.getSupabaseClient) return;
+            const client = await window.supabaseConfig.getSupabaseClient();
+            if (!client?.auth?.getSession) return;
+
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+                const { data } = await client.auth.getSession();
+                if (data?.session) return;
+                await new Promise(r => setTimeout(r, 200));
+            }
+        } catch (_) {}
     }
 
     async configurarRealtimeSesiones() {
@@ -1226,7 +1244,7 @@ class GestorSalas {
         // Configurar manejador del formulario
     const form = modal.querySelector('#formIniciarSesion');
         if (form) {
-            form.onsubmit = (e) => {
+            form.onsubmit = async (e) => {
                 e.preventDefault();
         // Evitar propagación adicional y estados de loading pegados
         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -1266,7 +1284,7 @@ class GestorSalas {
                 };
 
                 this.sesiones.push(sesion);
-                guardarSesiones(this.sesiones);
+                await guardarSesiones(this.sesiones);
                 
                 console.log('🔍 DEBUG creación sesión:');
                 console.log('  - Sesión agregada a this.sesiones');
@@ -1280,11 +1298,14 @@ class GestorSalas {
                     bootstrapModal.hide();
                 }
 
-                console.log('  - Llamando actualización directa (sin recargar datos)...');
-                this.actualizarSalas();
-                this.actualizarSesiones();
-                this.actualizarEstadisticas();
-                console.log('  - Actualización directa completada');
+                console.log('  - Recargando datos tras crear sesión...');
+                const refrescado = await this.recargarSesionesRemoto();
+                if (!refrescado) {
+                    this.actualizarSalas();
+                    this.actualizarSesiones();
+                    this.actualizarEstadisticas();
+                }
+                console.log('  - Actualización completada');
                 
                 mostrarNotificacion(`Sesión iniciada: ${formatearMoneda(tarifa)} por ${tiempo} minutos`, 'success');
             };
@@ -1601,7 +1622,7 @@ class GestorSalas {
         });
     }
 
-    procesarFinalizacion(sesionId) {
+    async procesarFinalizacion(sesionId) {
         const sesionIndex = this.sesiones.findIndex(s => s.id === sesionId);
         if (sesionIndex === -1) return;
 
@@ -1635,7 +1656,7 @@ class GestorSalas {
         sesion.totalGeneral = totalGeneral;
 
         // Guardar cambios
-        guardarSesiones(this.sesiones);
+        await guardarSesiones(this.sesiones);
         // Limpiar estados de alarma al finalizar
         try {
             this._alertasTiempoDisparadas.delete(sesionId);
@@ -1663,8 +1684,11 @@ class GestorSalas {
             modal.hide();
         }
 
-        // Actualizar vista
-        this.actualizarVista();
+        // Actualizar vista (releer desde Supabase si es posible)
+        const refrescado = await this.recargarSesionesRemoto();
+        if (!refrescado) {
+            this.actualizarVista();
+        }
 
         // Mostrar confirmación
         const metodosTexto = {
@@ -1678,6 +1702,21 @@ class GestorSalas {
             `Sesión finalizada correctamente. Total cobrado: ${formatearMoneda(totalGeneral)} (${metodosTexto[metodoPago]})`,
             'success'
         );
+    }
+
+    async recargarSesionesRemoto() {
+        try {
+            if (!window.databaseService) return false;
+            const nuevas = await obtenerSesiones();
+            if (Array.isArray(nuevas)) {
+                this.sesiones = nuevas;
+            }
+            this.actualizarVista();
+            return true;
+        } catch (e) {
+            console.warn('⚠️ No se pudo recargar sesiones desde Supabase:', e?.message || e);
+            return false;
+        }
     }
     
     configurarEventListeners() {
@@ -2704,7 +2743,7 @@ class GestorSalas {
         totalElement.textContent = formatearMoneda(precio);
     }
 
-    confirmarAgregarTiempo(sesionId) {
+    async confirmarAgregarTiempo(sesionId) {
         const tiempoSeleccionado = document.querySelector('input[name="tiempoAdicional"]:checked');
         if (!tiempoSeleccionado) {
             mostrarNotificacion('Por favor seleccione un tiempo adicional', 'error');
@@ -2765,7 +2804,7 @@ class GestorSalas {
         sesion.tiempoAdicional = (sesion.tiempoAdicional || 0) + tiempoAdicional;
         sesion.costoAdicional = (sesion.costoAdicional || 0) + costoAdicional;
 
-        guardarSesiones(this.sesiones);
+        await guardarSesiones(this.sesiones);
 
         // Cerrar el modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('modalAgregarTiempo'));
@@ -2773,12 +2812,14 @@ class GestorSalas {
             modal.hide();
         }
 
-        // Actualizar vista sin recargar datos para mantener las sesiones locales
-        console.log('🔍 DEBUG agregar tiempo - actualizando vista directamente...');
-        this.actualizarSalas();
-        this.actualizarSesiones();
-        this.actualizarEstadisticas();
-        console.log('  - Actualización directa completada');
+        // Actualizar vista recargando desde Supabase
+        console.log('🔍 DEBUG agregar tiempo - recargando datos...');
+        const refrescado = await this.recargarSesionesRemoto();
+        if (!refrescado) {
+            this.actualizarSalas();
+            this.actualizarSesiones();
+            this.actualizarEstadisticas();
+        }
         
         mostrarNotificacion(
             `Se agregaron ${tiempoAdicional} minutos por ${formatearMoneda(costoAdicional)} a la sesión`, 
@@ -3197,7 +3238,7 @@ class GestorSalas {
         });
     }
 
-    confirmarAgregarProductos(sesionId) {
+    async confirmarAgregarProductos(sesionId) {
         const inputs = document.querySelectorAll('#listaProductos input[type="number"]');
         const productos = [];
         let total = 0;
@@ -3281,7 +3322,7 @@ class GestorSalas {
         }));
         
         sesion.productos.push(...productosConFecha);
-        guardarSesiones(this.sesiones);
+        await guardarSesiones(this.sesiones);
 
         console.log('  - Productos agregados a la sesión:', productosProcesados);
 
@@ -3291,12 +3332,14 @@ class GestorSalas {
             modal.hide();
         }
 
-        // Actualizar vista sin recargar datos para mantener las sesiones locales
-        console.log('🔍 DEBUG agregar productos - actualizando vista directamente...');
-        this.actualizarSalas();
-        this.actualizarSesiones();
-        this.actualizarEstadisticas();
-        console.log('  - Actualización directa completada');
+        // Actualizar vista recargando desde Supabase
+        console.log('🔍 DEBUG agregar productos - recargando datos...');
+        const refrescado = await this.recargarSesionesRemoto();
+        if (!refrescado) {
+            this.actualizarSalas();
+            this.actualizarSesiones();
+            this.actualizarEstadisticas();
+        }
         
         const resumen = productos.map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
         mostrarNotificacion(`Productos agregados: ${resumen} | Total: ${formatearMoneda(total)}`, 'success');
@@ -3877,7 +3920,7 @@ class GestorSalas {
     }
 
     // Confirmar inicio rápido
-    confirmarInicioRapido(salaId, estacion, tiempoMinutos, nombreCliente) {
+    async confirmarInicioRapido(salaId, estacion, tiempoMinutos, nombreCliente) {
         const sala = this.salas.find(s => s.id === salaId);
         const tarifas = this._obtenerTarifasConfiguradas(sala);
         
@@ -3920,18 +3963,21 @@ class GestorSalas {
 
         // Agregar la sesión
         this.sesiones.push(nuevaSesion);
-        guardarSesiones(this.sesiones);
+        await guardarSesiones(this.sesiones);
 
         // Cerrar el modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('modalInicioRapido'));
         modal.hide();
 
-        // Actualizar la vista sin recargar datos
-        console.log('🔍 DEBUG sesión rápida - actualizando vista directamente...');
-        this.actualizarSalas();
-        this.actualizarSesiones();
-        this.actualizarEstadisticas();
-        console.log('  - Actualización directa completada');
+        // Actualizar la vista recargando desde Supabase
+        console.log('🔍 DEBUG sesión rápida - recargando datos...');
+        const refrescado = await this.recargarSesionesRemoto();
+        if (!refrescado) {
+            this.actualizarSalas();
+            this.actualizarSesiones();
+            this.actualizarEstadisticas();
+        }
+        console.log('  - Actualización completada');
 
         // Mostrar confirmación
         mostrarNotificacion(
