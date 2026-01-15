@@ -221,7 +221,7 @@
       background: rgba(239, 68, 68, 0.1) !important;
       transform: scale(0.98);
   }
-}
+
   body.salas-page.salas-corporate #modalIniciarSesion .btn-primary:hover {
     background: rgba(37,99,235,0.22) !important;
     box-shadow: 0 10px 24px rgba(37,99,235,.28), inset 0 1px 0 rgba(255,255,255,0.08) !important;
@@ -583,4 +583,5 @@
       background: #e2e8f0 !important;
       color: #0f172a !important;
   }
+}
 }
