@@ -303,7 +303,16 @@ async function guardarSesiones(sesiones) {
                     if (!sesionBD) {
                         // Insert
                         try {
-                            const res = await window.databaseService.insert('sesiones', payload);
+                            let res;
+                            try {
+                                res = await window.databaseService.insert('sesiones', payload);
+                            } catch (e) {
+                                if (e.message && e.message.includes('sesiones_usuario_id_fkey')) {
+                                    payload.usuario_id = null;
+                                    res = await window.databaseService.insert('sesiones', payload);
+                                } else { throw e; }
+                            }
+
                             if (res && res.success && res.data && res.data.id) {
                                 // Reemplazar id local por id remoto
                                 sesionesEntrada[i].id = res.data.id;
@@ -330,7 +339,17 @@ async function guardarSesiones(sesiones) {
                             try {
                                 await window.databaseService.update('sesiones', sesion.id, payload);
                             } catch (e) {
-                                console.warn('⚠️ No se pudo actualizar sesión en Supabase:', e?.message || e);
+                                // Reintento por error de FK usuario
+                                if (e.message && e.message.includes('sesiones_usuario_id_fkey')) {
+                                    delete payload.usuario_id;
+                                    try {
+                                        await window.databaseService.update('sesiones', sesion.id, payload);
+                                    } catch (retryE) {
+                                        console.warn('⚠️ Falló reintento de update:', retryE);
+                                    }
+                                } else {
+                                    console.warn('⚠️ No se pudo actualizar sesión en Supabase:', e?.message || e);
+                                }
                             }
                         }
                     }
@@ -890,12 +909,28 @@ class GestorSalas {
         if (this.contenedorSalas) {
             console.log('  - Actualizando contenedor con', salasFiltradas.length, 'salas');
             
+            const isMobileNative = document.body.classList.contains('salas-mobile-native');
+
             if (salasFiltradas.length > 0) {
-                const htmlGenerado = salasFiltradas.map(sala => this.crearHTMLSala(sala)).join('');
+                 // Switch Renderer
+                const renderFn = isMobileNative ? 
+                    (sala) => this.crearHTMLSalaMobile(sala) : 
+                    (sala) => this.crearHTMLSala(sala);
+                
+                const htmlGenerado = salasFiltradas.map(renderFn).join('');
                 console.log('  - HTML generado (primeros 500 chars):', htmlGenerado.substring(0, 500));
                 this.contenedorSalas.innerHTML = htmlGenerado;
             } else {
-                this.contenedorSalas.innerHTML = '<div class="alert alert-info text-center"><i class="fas fa-info-circle me-2"></i>No se encontraron salas</div>';
+                 if (isMobileNative) {
+                    this.contenedorSalas.innerHTML = `
+                        <div class="col-12 py-5 text-center">
+                            <i class="fas fa-ghost text-secondary mb-3 opacity-25" style="font-size: 3rem;"></i>
+                            <div class="text-secondary small fw-bold text-uppercase opacity-50" style="letter-spacing: 1px;">No hay salas</div>
+                        </div>
+                    `;
+                } else {
+                    this.contenedorSalas.innerHTML = '<div class="alert alert-info text-center"><i class="fas fa-info-circle me-2"></i>No se encontraron salas</div>';
+                }
             }
             
             console.log('  - Contenedor actualizado, contenido actual:', this.contenedorSalas.innerHTML.substring(0, 200));
@@ -904,6 +939,110 @@ class GestorSalas {
         }
         
         console.log('✅ actualizarSalas() completado');
+    }
+
+    // =================================================================
+    // RENDERER MÓVIL NATIVO (Integrado en GestorSalas)
+    // =================================================================
+    crearHTMLSalaMobile(sala) {
+        const sesionesActivas = this.sesiones.filter(s => s.salaId === sala.id && !s.finalizada);
+        const tipoInfo = CONFIG.tiposConsola[sala.tipo] || { icon: 'fas fa-gamepad', nombre: 'Consola' };
+        
+        const ocupadas = sesionesActivas.length;
+        const totalEstaciones = Number.isFinite(sala.numEstaciones) ? sala.numEstaciones : 0;
+        const disponibles = Math.max(0, totalEstaciones - ocupadas);
+        const ratioColor = disponibles > 0 ? (disponibles === totalEstaciones ? 'text-success' : 'text-warning') : 'text-danger';
+
+        // Generar grid de estaciones
+        let estacionesHTML = '';
+        for (let i = 1; i <= sala.numEstaciones; i++) {
+            const estacion = `${sala.prefijo}${i}`;
+            const sesion = sesionesActivas.find(s => s.estacion === estacion);
+            
+            if (sesion) {
+                // Estación Ocupada
+                const tiempoInfo = this.formatearTemporizadorPreciso(sesion);
+                const colorTexto = tiempoInfo.excedido ? 'text-danger' : 'text-success';
+                const progreso = Math.min(100, (sesion.tiempo_transcurrido / sesion.tiempo_contratado) * 100);
+                
+                estacionesHTML += `
+                    <div class="col-6">
+                        <div class="d-flex flex-column h-100 p-2 position-relative overflow-hidden" 
+                             style="background: rgba(16, 185, 129, 0.08); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                            
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25" style="font-size: 0.65rem;">${estacion}</span>
+                            </div>
+
+                            <div class="fw-bold text-white text-truncate mb-1" style="font-size: 0.85rem;">
+                                ${sesion.cliente || 'Anonimo'}
+                            </div>
+
+                            <div class="mt-auto">
+                                <div class="fw-bold ${colorTexto}" style="font-size: 1.1rem; line-height: 1;">
+                                    ${tiempoInfo.formato}
+                                </div>
+                                <div class="d-flex justify-content-between align-items-end mt-1">
+                                    <span class="text-secondary" style="font-size: 0.65rem;">${tiempoInfo.excedido ? 'Extra' : 'Restante'}</span>
+                                    <span class="badge bg-dark bg-opacity-50 text-light border border-secondary border-opacity-25" style="font-size: 0.6rem;">${sesion.tiempo_contratado}m</span>
+                                </div>
+                            </div>
+                             
+                             <!-- Actions Overlay (Click Area) -->
+                             <a href="#" onclick="window.gestorSalas.finalizarSesion('${sesion.id}')" class="stretched-link" style="z-index: 1;"></a>
+
+                            <div class="position-absolute bottom-0 start-0 w-100" style="height: 3px; background: rgba(255,255,255,0.1);">
+                                <div class="h-100 bg-success" style="width: ${progreso}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Estación Libre
+                estacionesHTML += `
+                    <div class="col-6">
+                        <div class="d-flex flex-column h-100 p-2 justify-content-between text-center cursor-pointer position-relative zoom-hover" 
+                             onclick="window.gestorSalas.iniciarSesion('${sala.id}', '${estacion}')"
+                             style="background: rgba(255, 255, 255, 0.05); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.2); min-height: 90px;">
+                            
+                            <div class="w-100 text-start">
+                                <span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25" style="font-size: 0.65rem;">${estacion}</span>
+                            </div>
+
+                            <div class="py-2">
+                                <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-1" style="width: 28px; height: 28px;">
+                                    <i class="fas fa-play text-primary" style="font-size: 0.7rem;"></i>
+                                </div>
+                                <div class="text-secondary small fw-bold" style="font-size: 0.7rem;">Iniciar</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        return `
+            <div class="col-12 mb-3">
+                <div class="p-3" style="background: rgba(30, 41, 59, 0.7); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); backdrop-filter: blur(10px);">
+                    <div class="d-flex align-items-center justify-content-between mb-3 border-bottom border-light border-opacity-10 pb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center text-primary" style="width: 32px; height: 32px;">
+                                <i class="${tipoInfo.icon} fa-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="h6 fw-bold text-white mb-0">${sala.nombre}</h3>
+                                <div class="d-flex align-items-center gap-2" style="font-size: 0.7rem;">
+                                    <span class="${ratioColor}">${disponibles} Libres</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        ${estacionesHTML}
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
     crearHTMLSala(sala) {
@@ -1532,10 +1671,65 @@ class GestorSalas {
         // Al abrir el modal, asegurar estado del botón correcto
         resetSubmitButton();
 
+        const isMobileNative = document.body.classList.contains('salas-mobile-native');
+
         // Actualizar opciones de tiempo con tarifas
         const contenedorOpciones = modal.querySelector('#opcionesTiempo');
         if (contenedorOpciones) {
-            contenedorOpciones.innerHTML = `
+            
+            // Template para móvil horizontal
+            if (isMobileNative) {
+                contenedorOpciones.innerHTML = `
+                   <!-- 30 Min -->
+                   <label class="d-flex flex-column align-items-center justify-content-center border rounded-3 p-2 bg-dark bg-opacity-25 option-card cursor-pointer" style="min-width: 80px; flex-shrink: 0; border-color: rgba(255,255,255,0.1) !important;">
+                       <input type="radio" name="tiempoTarifa" value="30" class="d-none" onchange="actualizarSeleccionMobile(this)">
+                       <div class="fw-bold small text-white">30m</div>
+                       <div class="text-primary fw-bold" style="font-size: 0.9rem;">${formatearMoneda(tarifas.t30 || 0)}</div>
+                   </label>
+                   
+                   <!-- 60 Min (Default) -->
+                   <label class="d-flex flex-column align-items-center justify-content-center border rounded-3 p-2 bg-primary bg-opacity-25 option-card cursor-pointer border-primary" style="min-width: 80px; flex-shrink: 0;">
+                       <input type="radio" name="tiempoTarifa" value="60" class="d-none" checked onchange="actualizarSeleccionMobile(this)">
+                       <div class="fw-bold small text-white">1h</div>
+                       <div class="text-success fw-bold" style="font-size: 0.9rem;">${formatearMoneda(tarifas.t60 || 0)}</div>
+                   </label>
+                   
+                   <!-- 90 Min -->
+                   <label class="d-flex flex-column align-items-center justify-content-center border rounded-3 p-2 bg-dark bg-opacity-25 option-card cursor-pointer" style="min-width: 80px; flex-shrink: 0; border-color: rgba(255,255,255,0.1) !important;">
+                       <input type="radio" name="tiempoTarifa" value="90" class="d-none" onchange="actualizarSeleccionMobile(this)">
+                       <div class="fw-bold small text-white">1.5h</div>
+                       <div class="text-warning fw-bold" style="font-size: 0.9rem;">${formatearMoneda(tarifas.t90 || 0)}</div>
+                   </label>
+                   
+                   <!-- 120 Min -->
+                   <label class="d-flex flex-column align-items-center justify-content-center border rounded-3 p-2 bg-dark bg-opacity-25 option-card cursor-pointer" style="min-width: 80px; flex-shrink: 0; border-color: rgba(255,255,255,0.1) !important;">
+                       <input type="radio" name="tiempoTarifa" value="120" class="d-none" onchange="actualizarSeleccionMobile(this)">
+                       <div class="fw-bold small text-white">2h</div>
+                       <div class="text-info fw-bold" style="font-size: 0.9rem;">${formatearMoneda(tarifas.t120 || 0)}</div>
+                   </label>
+                `;
+
+                // Helper global para el cambio de selección en móvil (inyectado si no existe)
+                if (!window.actualizarSeleccionMobile) {
+                    window.actualizarSeleccionMobile = function(radio) {
+                        // Reset all
+                        const container = radio.closest('#opcionesTiempo');
+                        container.querySelectorAll('.option-card').forEach(c => {
+                            c.classList.remove('border-primary', 'bg-primary', 'bg-opacity-25');
+                            c.classList.add('bg-dark', 'bg-opacity-25');
+                            c.style.borderColor = 'rgba(255,255,255,0.1)';
+                        });
+                        // Activate current
+                        const label = radio.closest('label');
+                        label.classList.remove('bg-dark');
+                        label.classList.add('border-primary', 'bg-primary', 'bg-opacity-25');
+                        label.style.borderColor = ''; // usa la clase
+                    };
+                }
+
+            } else {
+                // Template Desktop (Original)
+                contenedorOpciones.innerHTML = `
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="card h-100 border cursor-pointer option-card position-relative shadow-sm hover-shadow transition-all">
@@ -1579,6 +1773,7 @@ class GestorSalas {
                     </div>
                 </div>
             `;
+            }
         }
 
         // Actualizar selector de estaciones
@@ -1608,68 +1803,153 @@ class GestorSalas {
         if (form) {
             form.onsubmit = async (e) => {
                 e.preventDefault();
-        // Evitar propagación adicional y estados de loading pegados
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                const formData = new FormData(form);
-                
-                // Determinar tiempo y tarifa
-                let tiempo = 60; // Default
-                let tarifa = tarifas.t60 || 0;
-                
-                const tiempoPersonalizado = formData.get('tiempoPersonalizado');
-                if (tiempoPersonalizado && parseInt(tiempoPersonalizado) > 0) {
-                    tiempo = parseInt(tiempoPersonalizado);
-                    tarifa = this.calcularTarifaPersonalizada(sala.id, tiempo);
-                } else {
-                    const tiempoSeleccionado = formData.get('tiempoTarifa');
-                    if (tiempoSeleccionado) {
-                        tiempo = parseInt(tiempoSeleccionado);
-                        tarifa = this.obtenerTarifaPorTiempo(sala.id, tiempo);
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+                try {
+                    const formData = new FormData(form);
+                    
+                    // Validación básica
+                    const estacion = formData.get('estacion');
+                    if (!estacion) {
+                        alert('Por favor selecciona una estación válida.');
+                        return;
                     }
-                }
-                
-                const sesion = {
-                    id: generarId(),
-                    salaId: sala.id,
-                    estacion: formData.get('estacion'),
-                    cliente: formData.get('cliente')?.trim() || 'Genérico',
-                    fecha_inicio: new Date().toISOString(),
-                    tarifa_base: tarifa,
-                    tiempo_contratado: tiempo,
-                    tiempo: tiempo,
-                    tiempoOriginal: tiempo,
-                    tiempoAdicional: 0,
-                    costoAdicional: 0,
-                    productos: [],
-                    tiemposAdicionales: [],
-                    finalizada: false
-                };
 
-                this.sesiones.push(sesion);
-                await guardarSesiones(this.sesiones);
-                
-                console.log('🔍 DEBUG creación sesión:');
-                console.log('  - Sesión agregada a this.sesiones');
-                console.log('  - this.sesiones.length:', this.sesiones.length);
-                console.log('  - Sesiones activas:', this.sesiones.filter(s => !s.finalizada).length);
-                // Restablecer botón submit (quitar "Enviando...")
-                resetSubmitButton();
+                    // Determinar tiempo y tarifa
+                    let tiempo = 60; // Default
+                    let tarifa = tarifas.t60 || 0;
+                    
+                    const tiempoPersonalizado = formData.get('tiempoPersonalizado');
+                    if (tiempoPersonalizado && parseInt(tiempoPersonalizado) > 0) {
+                        tiempo = parseInt(tiempoPersonalizado);
+                        tarifa = this.calcularTarifaPersonalizada(sala.id, tiempo);
+                    } else {
+                        const tiempoSeleccionado = formData.get('tiempoTarifa');
+                        if (tiempoSeleccionado) {
+                            tiempo = parseInt(tiempoSeleccionado);
+                            tarifa = this.obtenerTarifaPorTiempo(sala.id, tiempo);
+                        }
+                    }
+                    
+                    const sesion = {
+                        id: generarId(),
+                        salaId: sala.id,
+                        estacion: estacion,
+                        cliente: formData.get('cliente')?.trim() || 'Genérico',
+                        fecha_inicio: new Date().toISOString(),
+                        tarifa_base: tarifa,
+                        tiempo_contratado: tiempo,
+                        tiempo: tiempo,
+                        tiempoOriginal: tiempo,
+                        tiempoAdicional: 0,
+                        costoAdicional: 0,
+                        total_general: 0, // Inicia en 0
+                        productos: [],
+                        tiemposAdicionales: [],
+                        finalizada: false,
+                        estado: 'activa'
+                    };
 
-                const bootstrapModal = bootstrap.Modal.getInstance(modal);
-                if (bootstrapModal) {
-                    bootstrapModal.hide();
-                }
+                    // --- ESTRATEGIA: INSERT DIRECTO A SUPABASE ---
+                    // Evitamos usar guardarSesiones() para la creación crítica
+                    // para garantizar que la sesión se persiste antes de renderizar.
+                    try {
+                        console.log('🚀 Iniciando creación directa de sesión en Supabase...');
+                        
+                        // 1. Preparar Payload (Copia de lógica mapSesionToPayload)
+                        const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+                        
+                        let usuarioId = null;
+                        // Intentar obtener usuario actual
+                        try {
+                            if (window.sessionManager?.getCurrentUser) {
+                                const u = window.sessionManager.getCurrentUser();
+                                if (u && u.id && isUuid(u.id)) usuarioId = u.id;
+                            }
+                            // Fallback al cliente supabase si está disponible
+                            if (!usuarioId && window.supabaseConfig) {
+                                const cl = await window.supabaseConfig.getSupabaseClient();
+                                const { data } = await cl.auth.getSession();
+                                if (data?.session?.user?.id) usuarioId = data.session.user.id;
+                            }
+                        } catch(e) { console.warn('Error resolviendo usuario:', e); }
 
-                console.log('  - Recargando datos tras crear sesión...');
-                const refrescado = await this.recargarSesionesRemoto();
-                if (!refrescado) {
+                        const payload = {
+                            sala_id: sesion.salaId,
+                            usuario_id: usuarioId, // Puede ser null
+                            estacion: sesion.estacion,
+                            cliente: sesion.cliente,
+                            fecha_inicio: sesion.fecha_inicio,
+                            tiempo_contratado: sesion.tiempo_contratado,
+                            tiempo_adicional: 0,
+                            tarifa_base: sesion.tarifa_base,
+                            costo_adicional: 0,
+                            total_tiempo: 0,
+                            total_productos: 0,
+                            total_general: 0,
+                            descuento: 0,
+                            metodo_pago: 'efectivo',
+                            estado: 'activa',
+                            finalizada: false,
+                            productos: [],
+                            tiempos_adicionales: [],
+                            notas: null
+                        };
+
+                        // 2. Insertar
+                        let res;
+                        try {
+                            res = await window.databaseService.insert('sesiones', payload);
+                        } catch (primaryError) {
+                            // Detectar error de clave foránea en usuario_id (usuario auth no existe en tabla publica)
+                            if (primaryError.message && primaryError.message.includes('sesiones_usuario_id_fkey')) {
+                                console.warn('⚠️ Usuario no encontrado en tabla pública. Reintentando sin usuario_id.');
+                                payload.usuario_id = null;
+                                res = await window.databaseService.insert('sesiones', payload);
+                            } else {
+                                throw primaryError; // Relanzar si es otro error
+                            }
+                        }
+                        
+                        if (res && res.success && res.data) {
+                            console.log('✅ Sesión creada en BD con ID:', res.data.id);
+                            // Actualizar ID temporal con el real de la BD
+                            sesion.id = res.data.id;
+                            // Actualizar timestamp real del servidor si viene
+                            if (res.data.fecha_inicio) sesion.fecha_inicio = res.data.fecha_inicio;
+                        } else {
+                            throw new Error('La base de datos no devolvió confirmación.');
+                        }
+                    } catch (dbError) {
+                        console.error('❌ Falló inserción en BD:', dbError);
+                        alert('ADVERTENCIA: No se pudo guardar en la nube. Verifica tu conexión.');
+                        // Aún así continuamos localmente para no bloquear al operador, 
+                        // pero sabiendo que hay riesgo de desincronización.
+                    }
+
+                    this.sesiones.push(sesion);
+                    
+                    // console.log('✅ Sesión iniciada local:', sesion.id);
+
+                    // Reset y cierre
+                    resetSubmitButton();
+                    const bootstrapModal = bootstrap.Modal.getInstance(modal);
+                    if (bootstrapModal) {
+                        bootstrapModal.hide();
+                    } else {
+                        // Fallback por si getInstance falla
+                        const btnClose = modal.querySelector('.btn-close');
+                        if(btnClose) btnClose.click();
+                    }
+                    
                     this.actualizarSalas();
-                    this.actualizarSesiones();
                     this.actualizarEstadisticas();
+
+                } catch (error) {
+                    console.error('❌ Error iniciando sesión:', error);
+                    alert('Error al iniciar la sesión: ' + (error.message || 'Error desconocido'));
+                    resetSubmitButton();
                 }
-                console.log('  - Actualización completada');
-                
-                mostrarNotificacion(`Sesión iniciada: ${formatearMoneda(tarifa)} por ${tiempo} minutos`, 'success');
             };
         }
 
