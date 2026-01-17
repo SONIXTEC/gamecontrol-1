@@ -168,6 +168,7 @@ class GestorStock {
                     precio: Number(m.costo_unitario) || 0,
                     stock: Number(m.stock_nuevo) || 0,
                     observaciones: m.motivo || m.referencia || '',
+                    precioTotal: Number(m.valor_total) || 0, // Corregido: mapear a precioTotal para la vista
                     valorTotal: Number(m.valor_total) || 0
                 }));
                 

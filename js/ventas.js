@@ -100,12 +100,7 @@ class GestorVentas {
                 try {
                      const resSesiones = await window.databaseService.select('sesiones', {
                         filtros: { finalizada: true },
-                        // ORDEN DE LLEGADA (Cronológico): Fecha de inicio ASC o DESC?
-                        // "Orden de llegada" generalmente significa ver lo más reciente arriba (LIFO para el usuario) 
-                        // o lo más antiguo arriba (FIFO).
-                        // En contextos de logs/historial, "Orden de llegada" puede interpretarse como
-                        // el orden en que ocurrieron (Cronológico inverso para ver lo último primero).
-                        // Vamos a asegurar el orden descendente por fecha de fin (cuando la venta se concretó).
+                        select: '*, usuario:usuarios(nombre)', // Incluir relación usuario para tener nombre de vendedor si falta
                         ordenPor: { campo: 'fecha_fin', direccion: 'desc' }, 
                         noCache: true 
                     });
@@ -150,6 +145,7 @@ class GestorVentas {
                                 totalGeneral: Number(row.total_general || row.totalGeneral || 0),
                                 finalizada: true,
                                 estado: 'finalizada',
+                                vendedor: (row.usuario && row.usuario.nombre) || row.vendedor || row.usuario_nombre || 'Sistema',
                                 origen: 'sesiones_directo'
                             };
                         });
@@ -212,21 +208,22 @@ class GestorVentas {
     }
 
     calcularTotalSesion(sesion) {
-        // Usar totales guardados si están disponibles
-        if (sesion.totalGeneral !== undefined) {
-            return sesion.totalGeneral;
+        // Usar totales guardados si están disponibles y parecen correctos
+        if (sesion.totalGeneral !== undefined && sesion.totalGeneral > 0) {
+           return sesion.totalGeneral;
         }
 
-        // Calcular total basado en tarifas y productos
-        let total = sesion.tarifa_base || sesion.tarifa || 0;
+        // Calcular total recalibrado para evitar duplicidad
+        let total = Number(sesion.tarifa_base || sesion.tarifa || 0);
         
-        // Sumar tiempos adicionales
-        if (sesion.costoAdicional) {
-            total += sesion.costoAdicional;
+        // Costos adicionales (priorizar array detallado sobre scalar para no duplicar)
+        let adicionales = 0;
+        if (sesion.tiemposAdicionales && Array.isArray(sesion.tiemposAdicionales) && sesion.tiemposAdicionales.length > 0) {
+             adicionales = sesion.tiemposAdicionales.reduce((sum, tiempo) => sum + (Number(tiempo.costo) || 0), 0);
+        } else {
+             adicionales = Number(sesion.costoAdicional || sesion.costo_adicional || 0);
         }
-        if (sesion.tiemposAdicionales && sesion.tiemposAdicionales.length > 0) {
-            total += sesion.tiemposAdicionales.reduce((sum, tiempo) => sum + (tiempo.costo || 0), 0);
-        }
+        total += adicionales;
 
         // Agregar productos
         if (sesion.productos && sesion.productos.length > 0) {
@@ -463,17 +460,18 @@ class GestorVentas {
                         </span>
                     </td>
                     <td class="fw-bold text-success">${formatearMoneda(total)}</td>
-                    <td>
-                        <div class="btn-group" role="group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="window.gestorVentas.verDetalle('${sesion.id}')" title="Ver detalle">
-                                <i class="fas fa-eye"></i>
+                    <td class="text-center">
+                        <div class="d-flex gap-1 justify-content-center">
+                            <button class="btn btn-sm btn-light text-primary border-0 shadow-sm px-2 py-1" onclick="window.gestorVentas.verDetalle('${sesion.id}')" title="Ver detalle" style="width: 32px; height: 32px; border-radius: 8px;">
+                                <i class="fas fa-eye fa-sm"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-success" onclick="window.gestorVentas.imprimirFactura('${sesion.id}')" title="Imprimir">
-                                <i class="fas fa-print"></i>
+                            <button class="btn btn-sm btn-light text-success border-0 shadow-sm px-2 py-1" onclick="window.gestorVentas.imprimirFactura('${sesion.id}')" title="Imprimir" style="width: 32px; height: 32px; border-radius: 8px;">
+                                <i class="fas fa-print fa-sm"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="window.gestorVentas.eliminarRegistro('${sesion.id}')" title="Eliminar">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            ${sesion.usuario === 'sistema' || sesion.usuario === 'admin' /* Proteger admin? */ ? '' : 
+                            `<button class="btn btn-sm btn-light text-danger border-0 shadow-sm px-2 py-1" onclick="window.gestorVentas.eliminarRegistro('${sesion.id}')" title="Eliminar" style="width: 32px; height: 32px; border-radius: 8px;">
+                                <i class="fas fa-trash-alt fa-sm"></i>
+                            </button>`}
                         </div>
                     </td>
                 </tr>
@@ -780,157 +778,219 @@ class GestorVentas {
         const duracionMinutos = Math.floor((fin - inicio) / (1000 * 60));
         const total = this.calcularTotalSesion(sesion);
         
-        // Calcular desglose de costos
-        const costoTiempo = sesion.tarifa_base || sesion.tarifa || 0;
-        const costoAdicionales = (sesion.costoAdicional || 0) + 
-            (sesion.tiemposAdicionales ? sesion.tiemposAdicionales.reduce((sum, t) => sum + (t.costo || 0), 0) : 0);
+        // Determinar vendedor (Usuario actual si no hay vendedor guardado)
+        let nombreVendedor = sesion.vendedor;
+        if (!nombreVendedor || nombreVendedor === 'Sistema') {
+             // Intenta obtener el usuario logueado desde la UI
+             const usuarioLogueado = document.querySelector('.user-name')?.textContent;
+             if (usuarioLogueado && usuarioLogueado !== 'Cargando...') {
+                 nombreVendedor = usuarioLogueado;
+             }
+        }
+        
+        // Calcular desglose de costos (CORREGIDO PARA EVITAR DUPLICIDAD)
+        const costoTiempo = Number(sesion.tarifa_base || sesion.tarifa || 0);
+        
+        let costoAdicionales = 0;
+        if (sesion.tiemposAdicionales && Array.isArray(sesion.tiemposAdicionales) && sesion.tiemposAdicionales.length > 0) {
+            costoAdicionales = sesion.tiemposAdicionales.reduce((sum, t) => sum + (Number(t.costo) || 0), 0);
+        } else {
+             costoAdicionales = Number(sesion.costoAdicional || 0);
+        }
+
         const costoProductos = sesion.productos ? 
-            sesion.productos.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) : 0;
+            sesion.productos.reduce((sum, p) => sum + (Number(p.subtotal) || (p.cantidad * p.precio)), 0) : 0;
+
+        // Recalcular TOTAL VISUAL para garantizar que la suma de las partes siempre sea igual al total mostrado
+        const totalVisual = costoTiempo + costoAdicionales + costoProductos;
+        // Solo usar el total guardado si difiere por redondeos menores, sino preferir la suma explicita de componentes mostrados
+        const totalFinal = (sesion.totalGeneral && Math.abs(sesion.totalGeneral - totalVisual) < 100) ? 
+                           sesion.totalGeneral : totalVisual;
 
         const modalBody = document.getElementById('modalDetalleSesionBody');
         modalBody.innerHTML = `
-            <div class="row">
-                <!-- Información del Cliente -->
-                <div class="col-md-6 mb-4">
-                    <div class="card border-primary">
-                        <div class="card-header bg-primary bg-opacity-10">
-                            <h6 class="mb-0 text-primary">
-                                <i class="fas fa-user me-2"></i>Información del Cliente
-                            </h6>
+            <div class="row g-3">
+                <!-- COLUMNA IZQUIERDA: Info Básica y Cliente -->
+                <div class="col-md-6">
+                    <!-- Cliente y Vendedor -->
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-header bg-primary text-white bg-gradient d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="fas fa-user-circle me-2"></i>Información</h6>
+                            <span class="badge bg-white text-primary">ID: ${sesion.id.slice(-6)}</span>
                         </div>
                         <div class="card-body">
-                            <div class="d-flex align-items-center mb-3">
-                                <div class="user-avatar me-3" style="width: 50px; height: 50px; font-size: 20px;">
-                                    ${sesion.cliente.charAt(0).toUpperCase()}
+                           <div class="d-flex align-items-center mb-4">
+                                <div class="rounded-circle bg-primary bg-opacity-10 d-flex justify-content-center align-items-center text-primary fw-bold me-3" 
+                                     style="width: 55px; height: 55px; font-size: 1.5rem;">
+                                    ${(sesion.cliente || 'C').charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                    <h5 class="mb-1">${sesion.cliente}</h5>
-                                    <small class="text-muted">ID: ${sesion.id.slice(-8)}</small>
+                                    <h5 class="mb-0 fw-bold">${sesion.cliente}</h5>
+                                    <span class="badge bg-light text-secondary border mt-1">
+                                        <i class="fas fa-calendar-alt me-1"></i>${formatearFecha(sesion.fecha_inicio)}
+                                    </span>
                                 </div>
                             </div>
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <small class="text-muted">Vendedor:</small>
-                                    <div class="fw-semibold">${sesion.vendedor || 'No asignado'}</div>
-                                </div>
-                                <div class="col-6">
-                                    <small class="text-muted">Método de Pago:</small>
+                            
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <span class="text-muted"><i class="fas fa-id-badge me-2 text-secondary"></i>Vendedor</span>
+                                    <div class="fw-semibold text-dark">${nombreVendedor || 'No asignado'}</div>
+                                </li>
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <span class="text-muted"><i class="fas fa-wallet me-2 text-secondary"></i>Método Pago</span>
                                     <div>
                                         <span class="metodo-pago-badge ${this.obtenerClaseMetodoPago(sesion.metodoPago || 'efectivo')}">
                                             <i class="${this.obtenerIconoMetodoPago(sesion.metodoPago || 'efectivo')}"></i>
                                             ${this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo')}
                                         </span>
                                     </div>
-                                </div>
-                            </div>
+                                </li>
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <span class="text-muted"><i class="fas fa-map-marker-alt me-2 text-secondary"></i>Ubicación</span>
+                                    <span class="badge bg-info text-dark">${salaInfo}</span>
+                                </li>
+                            </ul>
                         </div>
                     </div>
                 </div>
 
-                <!-- Información de la Sesión -->
-                <div class="col-md-6 mb-4">
-                    <div class="card border-info">
-                        <div class="card-header bg-info bg-opacity-10">
-                            <h6 class="mb-0 text-info">
-                                <i class="fas fa-clock me-2"></i>Información de la Sesión
-                            </h6>
+                <!-- COLUMNA DERECHA: Tiempos -->
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                         <div class="card-header bg-info text-white bg-gradient">
+                            <h6 class="mb-0"><i class="fas fa-stopwatch me-2"></i>Cronología</h6>
                         </div>
                         <div class="card-body">
-                            <div class="row g-2">
-                                <div class="col-12 mb-2">
-                                    <small class="text-muted">Sala:</small>
-                                    <div class="fw-semibold">
-                                        <span class="badge bg-primary bg-opacity-10 text-primary">${salaInfo}</span>
-                                    </div>
+                            <div class="row text-center mb-3">
+                                <div class="col-4 border-end">
+                                    <small class="text-muted d-block text-uppercase" style="font-size: 0.7rem;">Inicio</small>
+                                    <span class="fw-bold text-success">${formatearHora(inicio)}</span>
                                 </div>
-                                <div class="col-6">
-                                    <small class="text-muted">Inicio:</small>
-                                    <div class="fw-semibold text-success">
-                                        ${formatearFecha(sesion.fecha_inicio || sesion.inicio)}<br>
-                                        ${formatearHora(sesion.fecha_inicio || sesion.inicio)}
-                                    </div>
+                                <div class="col-4 border-end">
+                                    <small class="text-muted d-block text-uppercase" style="font-size: 0.7rem;">Fin</small>
+                                    <span class="fw-bold text-danger">${fin ? formatearHora(fin) : '--:--'}</span>
                                 </div>
-                                <div class="col-6">
-                                    <small class="text-muted">Cierre:</small>
-                                    <div class="fw-semibold text-danger">
-                                        ${sesion.fecha_fin || sesion.fin ? formatearFecha(sesion.fecha_fin || sesion.fin) : 'En curso'}<br>
-                                        ${sesion.fecha_fin || sesion.fin ? formatearHora(sesion.fecha_fin || sesion.fin) : '-'}
-                                    </div>
+                                <div class="col-4">
+                                    <small class="text-muted d-block text-uppercase" style="font-size: 0.7rem;">Duración</small>
+                                    <span class="fw-bold text-primary">${formatearTiempo(duracionMinutos)}</span>
                                 </div>
-                                <div class="col-12">
-                                    <small class="text-muted">Duración:</small>
-                                    <div class="fw-semibold fs-5 text-primary">${formatearTiempo(duracionMinutos)}</div>
+                            </div>
+                            
+                            <!-- Resumen Visual Costos -->
+                            <div class="mt-4">
+                                <small class="text-muted mb-2 d-block">Distribución del Total</small>
+                                <div class="progress" style="height: 10px;">
+                                  <div class="progress-bar bg-primary" role="progressbar" style="width: ${(costoTiempo/totalFinal)*100}%" title="Tiempo: ${formatearMoneda(costoTiempo)}"></div>
+                                  <div class="progress-bar bg-warning" role="progressbar" style="width: ${(costoProductos/totalFinal)*100}%" title="Productos: ${formatearMoneda(costoProductos)}"></div>
+                                </div>
+                                <div class="d-flex justify-content-between mt-1 small text-muted">
+                                    <span><i class="fas fa-circle text-primary me-1" style="font-size: 8px;"></i>Tiempo</span>
+                                    <span><i class="fas fa-circle text-warning me-1" style="font-size: 8px;"></i>Productos</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Desglose de Consumo -->
-            <div class="card border-success mb-4">
-                <div class="card-header bg-success bg-opacity-10">
-                    <h6 class="mb-0 text-success">
-                        <i class="fas fa-receipt me-2"></i>Desglose de Consumo
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Concepto</th>
-                                    <th>Descripción</th>
-                                    <th class="text-end">Costo</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><i class="fas fa-gamepad text-primary me-2"></i>Tiempo Base</td>
-                                    <td>Sesión de gaming</td>
-                                    <td class="text-end fw-semibold">${formatearMoneda(costoTiempo)}</td>
-                                </tr>
-                                ${costoAdicionales > 0 ? `
-                                    <tr>
-                                        <td><i class="fas fa-plus text-warning me-2"></i>Tiempo Adicional</td>
-                                        <td>
-                                            ${sesion.tiemposAdicionales ? 
-                                                sesion.tiemposAdicionales.map(t => `${t.minutos} min`).join(', ') : 
-                                                'Tiempo extra'}
-                                        </td>
-                                        <td class="text-end fw-semibold">${formatearMoneda(costoAdicionales)}</td>
-                                    </tr>
-                                ` : ''}
-                                ${sesion.productos && sesion.productos.length > 0 ? 
-                                    sesion.productos.map(producto => `
+                <!-- DESGLOSE DETALLADO -->
+                <div class="col-12 mt-3">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-light fw-bold">
+                            <i class="fas fa-list-alt me-2 text-secondary"></i>Detalle de Consumo
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="bg-light">
                                         <tr>
-                                            <td><i class="fas fa-shopping-cart text-info me-2"></i>${producto.nombre}</td>
-                                            <td>Cantidad: ${producto.cantidad}</td>
-                                            <td class="text-end fw-semibold">${formatearMoneda(producto.subtotal || (producto.cantidad * producto.precio))}</td>
+                                            <th class="ps-4">Item / Concepto</th>
+                                            <th class="text-center">Cant. / Detalle</th>
+                                            <th class="text-end pe-4">Subtotal</th>
                                         </tr>
-                                    `).join('') : 
-                                    '<tr><td colspan="3" class="text-muted text-center">No hay productos consumidos</td></tr>'
-                                }
-                                <tr class="table-success">
-                                    <td colspan="2" class="fw-bold">TOTAL</td>
-                                    <td class="text-end fw-bold fs-5">${formatearMoneda(total)}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Sección Tiempo -->
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="rounded bg-primary bg-opacity-10 p-2 me-3 text-primary">
+                                                        <i class="fas fa-gamepad"></i>
+                                                    </div>
+                                                    <div>
+                                                        <strong>Alquiler Tiempo Base</strong>
+                                                        <div class="small text-muted">
+                                                            ${duracionMinutos > 0 && costoTiempo > 0 
+                                                                ? `Valor hora: ${formatearMoneda((costoTiempo / duracionMinutos) * 60)}` 
+                                                                : 'Consumo de sala'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="text-center"><span class="badge bg-light text-dark border">${duracionMinutos} min</span></td>
+                                            <td class="text-end pe-4 fw-bold text-dark">${formatearMoneda(costoTiempo)}</td>
+                                        </tr>
+                                        
+                                        ${costoAdicionales > 0 ? `
+                                            <tr>
+                                                <td class="ps-4">
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="rounded bg-warning bg-opacity-10 p-2 me-3 text-warning">
+                                                            <i class="fas fa-clock"></i>
+                                                        </div>
+                                                        <div>
+                                                            <strong>Tiempo Extra</strong>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    ${sesion.tiemposAdicionales ? 
+                                                        sesion.tiemposAdicionales.map(t => `<small class="d-block text-muted">+${t.minutos}m</small>`).join('') : 
+                                                        '<small>Adicional</small>'}
+                                                </td>
+                                                <td class="text-end pe-4 fw-bold text-dark">${formatearMoneda(costoAdicionales)}</td>
+                                            </tr>
+                                        ` : ''}
+
+                                        <!-- Sección Productos -->
+                                        ${sesion.productos && sesion.productos.length > 0 ? 
+                                            sesion.productos.map(producto => `
+                                                <tr>
+                                                    <td class="ps-4">
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="rounded bg-success bg-opacity-10 p-2 me-3 text-success">
+                                                                <i class="fas fa-coffee"></i>
+                                                            </div>
+                                                            <div>
+                                                                <strong>${producto.nombre}</strong>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-center">x${producto.cantidad}</td>
+                                                    <td class="text-end pe-4 text-secondary">${formatearMoneda(producto.subtotal || (producto.cantidad * producto.precio))}</td>
+                                                </tr>
+                                            `).join('') : ''
+                                        }
+                                        
+                                        <!-- TOTAL -->
+                                        <tr class="table-light border-top-2">
+                                            <td></td>
+                                            <td class="text-end py-3"><h5 class="mb-0 fw-bold text-primary">TOTAL PAGADO</h5></td>
+                                            <td class="text-end pe-4 py-3"><h4 class="mb-0 fw-bold text-success">${formatearMoneda(totalFinal)}</h4></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             ${sesion.notas ? `
-                <!-- Notas Adicionales -->
-                <div class="card border-warning">
-                    <div class="card-header bg-warning bg-opacity-10">
-                        <h6 class="mb-0 text-warning">
-                            <i class="fas fa-sticky-note me-2"></i>Notas Adicionales
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <p class="mb-0">${sesion.notas}</p>
+                <div class="alert alert-warning mt-3 mb-0 d-flex align-items-center">
+                    <i class="fas fa-exclamation-circle me-3 fs-4"></i>
+                    <div>
+                        <strong>Notas:</strong> ${sesion.notas}
                     </div>
                 </div>
             ` : ''}
