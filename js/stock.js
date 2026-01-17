@@ -54,7 +54,9 @@ class GestorStock {
         
         // Cargar estrictamente desde Supabase
         await this.cargarDesdeSupabase();
+        await this.cargarMovimientosRemotos();
         await this.cargarCategoriasRemotas();
+        await this.cargarVentasHoy();
         
         this.actualizarEstadisticas();
         this.actualizarVistaPrevia();
@@ -143,6 +145,127 @@ class GestorStock {
         } catch (error) {
             console.warn('⚠️ Error cargando productos desde Supabase, continuando con cache local:', error?.message || error);
         }
+    }
+
+    async cargarMovimientosRemotos() {
+        try {
+            if (!window.databaseService) return;
+            
+            const resultado = await window.databaseService.select('movimientos_stock', {
+                select: '*, producto:productos(nombre), usuario:usuarios(nombre)',
+                ordenPor: { campo: 'fecha_movimiento', direccion: 'desc' },
+                limite: 50
+            });
+            
+            if (resultado && resultado.success && resultado.data) {
+                this.movimientos = resultado.data.map(m => ({
+                    id: m.id,
+                    productoId: m.producto_id,
+                    tipo: m.tipo,
+                    fecha: m.fecha_movimiento,
+                    cantidad: m.cantidad,
+                    usuario: m.usuario?.nombre || 'Sistema',
+                    precio: Number(m.costo_unitario) || 0,
+                    stock: Number(m.stock_nuevo) || 0,
+                    observaciones: m.motivo || m.referencia || '',
+                    valorTotal: Number(m.valor_total) || 0
+                }));
+                
+                this.cargarMovimientos();
+                console.log(`✅ Movimientos sincronizados: ${this.movimientos.length}`);
+            }
+        } catch (error) {
+            console.warn('⚠️ Error cargando movimientos desde Supabase:', error);
+        }
+    }
+
+    async cargarVentasHoy() {
+        try {
+            if (!window.databaseService) return 0;
+            
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            
+            // Consultar ventas de hoy con detalle
+            const resultado = await window.databaseService.select('movimientos_stock', {
+                filtros: { 
+                    tipo: 'venta',
+                    'fecha_movimiento': { operador: 'gte', valor: hoy.toISOString() }
+                },
+                select: '*, producto:productos(nombre)', // Traer todo + nombre producto
+                ordenPor: { campo: 'fecha_movimiento', direccion: 'desc' },
+                limite: 200 // Límite razonable para visualización
+            });
+
+            let totalVentasHoy = 0;
+            let ventas = [];
+
+            if (resultado && resultado.success && resultado.data) {
+                ventas = resultado.data;
+                totalVentasHoy = ventas.reduce((sum, m) => sum + (Number(m.valor_total) || 0), 0);
+            }
+
+            // Actualizar Widgets Superiores
+            const ventasHoyElement = document.getElementById('ventasHoyStock');
+            const ventasHoyDetalle = document.getElementById('ventasHoyDetalle');
+
+            if (ventasHoyElement) {
+                ventasHoyElement.textContent = formatearMoneda(totalVentasHoy);
+            }
+            if (ventasHoyDetalle) {
+                ventasHoyDetalle.innerHTML = `<i class="fas fa-clock"></i> ${ventas.length} ventas hoy`;
+                ventasHoyDetalle.className = ventas.length > 0 ? 'text-success mb-0' : 'text-muted mb-0';
+            }
+
+            // Actualizar Tabla de Detalle
+            this.renderizarTablaVentasDia(ventas, totalVentasHoy);
+            
+            return totalVentasHoy;
+        } catch (error) {
+            console.warn('⚠️ Error calculando ventas de hoy:', error);
+            return 0;
+        }
+    }
+
+    renderizarTablaVentasDia(ventas, total) {
+        const tbody = document.querySelector('#tablaVentasDia tbody');
+        const badge = document.getElementById('badgeTotalVentasDia');
+        
+        if (badge) badge.textContent = `Total Compra: ${formatearMoneda(total)}`;
+        if (!tbody) return;
+
+        if (ventas.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center py-4 text-muted">
+                        <i class="fas fa-receipt mb-2 text-secondary" style="font-size: 1.5rem;"></i>
+                        <p class="mb-0 small">No hay ventas registradas hoy<br>Las ventas del día aparecerán aquí</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = ventas.map(v => {
+            const hora = new Date(v.fecha_movimiento).toLocaleTimeString('es-CO', {hour: '2-digit', minute:'2-digit'});
+            const nombreProd = v.producto?.nombre || 'Producto desconocido';
+            const cantidad = v.cantidad;
+            const totalVenta = Number(v.valor_total) || 0;
+            
+            return `
+                <tr>
+                    <td><span class="badge bg-light text-dark border">${hora}</span></td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-box-open text-primary me-2"></i>
+                            <span class="text-truncate" style="max-width: 150px;" title="${nombreProd}">${nombreProd}</span>
+                        </div>
+                    </td>
+                    <td class="text-center fw-bold">${cantidad}</td>
+                    <td class="text-end fw-bold text-success">${formatearMoneda(totalVenta)}</td>
+                </tr>
+            `;
+        }).join('');
     }
 
     // === GESTIÓN DE CATEGORÍAS (igual que gastos) ===
@@ -1346,6 +1469,8 @@ class GestorStock {
         }
 
         // Actualizar card de rotación con margen promedio
+        // (DESHABILITADO: Reemplazado por Ventas Hoy)
+        /*
         if (stockCards[3] && this.productos.length > 0) {
             const margenPromedio = this.productos.reduce((total, p) => {
                 const ganancias = this.calcularGananciasProducto(p);
@@ -1381,6 +1506,7 @@ class GestorStock {
                 }
             }
         }
+        */
     }
 
     // === CÁLCULOS DE GANANCIA ===
