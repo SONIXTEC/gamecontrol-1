@@ -7,6 +7,18 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Gestión de Salas - GameControl</title>
+    <!-- Mobile Redirection Script -->
+    <script>
+        (function() {
+            var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+            // Solo redirigir si es móvil y no estamos ya en la versión móvil (check preventivo)
+            // La redirección ocurrirá antes de cargar el resto de recursos pesados
+            if (isMobile && !window.location.href.includes('salas_mobile.html')) {
+                console.log('📱 Dispositivo móvil detectado, redirigiendo a versión móvil nativa...');
+                window.location.href = 'salas_mobile.html';
+            }
+        })();
+    </script>
     <script>
         (function(){
             try {
