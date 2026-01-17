@@ -103,66 +103,75 @@
 
     <!-- Modal requerido por salas.js para iniciar sesión -->
     <div class="modal fade" id="modalIniciarSesion" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-        <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-centered modal-md">
+        <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-centered modal-dialog-scrollable modal-md">
             <div class="modal-content gc-modal">
-                <div class="modal-header gc-modal-header">
+                <div class="modal-header gc-modal-header py-2">
                     <div class="d-flex align-items-center gap-2">
-                        <div class="gc-modal-badge" aria-hidden="true"><i class="fas fa-bolt"></i></div>
+                        <div class="gc-modal-badge bg-primary bg-opacity-10 text-primary" aria-hidden="true"><i class="fas fa-bolt"></i></div>
                         <div>
-                            <h5 class="modal-title m-0">Iniciar Servicio</h5>
-                            <div class="gc-modal-subtitle">Selecciona estación, tiempo y cliente</div>
+                            <h5 class="modal-title m-0 fs-6 fw-bold">Iniciar Servicio</h5>
                         </div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
 
                 <form id="formIniciarSesion">
-                    <div class="modal-body gc-modal-body">
-                        <div class="gc-modal-section">
-                            <div class="gc-section-title"><i class="fas fa-user"></i><span>Cliente</span></div>
-                            <input type="text" class="form-control form-control-lg" name="cliente" placeholder="Gamertag / Nombre (opcional)" autocomplete="off">
-                            <div class="form-text">Tip: si lo dejas vacío, queda “Genérico”.</div>
-                        </div>
-
-                        <div class="gc-modal-section">
-                            <div class="gc-section-title"><i class="fas fa-tv"></i><span>Estación</span></div>
-                            <select class="form-select form-select-lg" name="estacion" id="selectEstacion" required></select>
-                        </div>
-
-                        <div class="gc-modal-section">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="gc-section-title mb-0"><i class="fas fa-hourglass-half"></i><span>Duración</span></div>
-                                <span class="gc-chip">Modo Gamer</span>
+                    <div class="modal-body gc-modal-body p-3">
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <div class="gc-modal-section p-2 mb-2">
+                                    <div class="gc-section-title mb-1 fs-7"><i class="fas fa-user me-1"></i><span>Cliente</span></div>
+                                    <input type="text" class="form-control form-control-sm bg-transparent text-white border-secondary" name="cliente" placeholder="Gamertag (Opcional)" autocomplete="off">
+                                </div>
                             </div>
-                            <div id="opcionesTiempo" class="mt-2"></div>
-
-                            <div class="gc-divider"></div>
-
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <div class="gc-section-title mb-0"><i class="fas fa-sliders-h"></i><span>Personalizado</span></div>
-                                <span class="gc-hint">Anula los botones de arriba</span>
-                            </div>
-
-                            <div class="input-group input-group-lg">
-                                <input type="number" min="1" step="1" inputmode="numeric" class="form-control" name="tiempoPersonalizado" placeholder="Ej: 75">
-                                <span class="input-group-text">min</span>
+                            
+                            <div class="col-12">
+                                <div class="gc-modal-section p-2 mb-2">
+                                    <div class="gc-section-title mb-1 fs-7"><i class="fas fa-tv me-1"></i><span>Estación</span></div>
+                                    <select class="form-select form-select-sm bg-transparent text-white border-secondary" name="estacion" id="selectEstacion" required></select>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="gc-total">
-                            <div class="gc-total-left">
-                                <div class="gc-total-label">Total estimado</div>
-                                <div class="gc-total-sub">Se calcula según tarifas</div>
+                        <div class="gc-modal-section p-2 mb-2">
+                             <div class="d-flex align-items-center justify-content-between mb-2">
+                                <div class="gc-section-title mb-0 fs-7"><i class="fas fa-hourglass-half me-1"></i><span>Tiempo</span></div>
+                                <span class="badge bg-primary bg-opacity-25 text-primary-emphasis rounded-pill" style="font-size: 0.65rem;">Gamer Mode</span>
                             </div>
-                            <div id="costoEstimado" class="gc-total-value">$0</div>
+                            <div id="opcionesTiempo" class="d-flex gap-2 overflow-auto pb-1" style="scrollbar-width: none;"></div>
+                        </div>
+
+                        <div class="accordion" id="accordionPersonalizado">
+                            <div class="accordion-item bg-transparent border-0">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed py-2 px-0 bg-transparent text-white shadow-none fs-7" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePersonalizado">
+                                        <i class="fas fa-sliders-h me-2 text-secondary"></i><span>Tiempo Personalizado</span>
+                                    </button>
+                                </h2>
+                                <div id="collapsePersonalizado" class="accordion-collapse collapse" data-bs-parent="#accordionPersonalizado">
+                                    <div class="accordion-body p-0 pt-2">
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" min="1" step="1" inputmode="numeric" class="form-control bg-transparent text-white border-secondary" name="tiempoPersonalizado" placeholder="Minutos">
+                                            <span class="input-group-text bg-secondary bg-opacity-25 text-light border-secondary">min</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="gc-total mt-3 py-2 border-top border-secondary border-opacity-25">
+                            <div class="d-flex justify-content-between align-items-center w-100">
+                                <span class="text-secondary small">Total estimado</span>
+                                <span id="costoEstimado" class="fw-bold text-success fs-5">$0</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="modal-footer gc-modal-footer">
-                        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">
-                            <i class="fas fa-times me-2"></i>Cancelar
+                    <div class="modal-footer gc-modal-footer p-2 border-top border-secondary border-opacity-10 justify-content-between bg-dark">
+                        <button type="button" class="btn btn-outline-light btn-sm px-4 rounded-pill" data-bs-dismiss="modal">
+                            Cancelar
                         </button>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary btn-sm px-4 rounded-pill shadow-lg">
                             <i class="fas fa-play me-2"></i>Iniciar
                         </button>
                     </div>
