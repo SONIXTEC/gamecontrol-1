@@ -158,6 +158,45 @@ function handleLoginSuccess() {
     
     // Evitar redirecciones múltiples
     if (window.isRedirecting) return;
+    
+    // Protección contra bucles de redirección
+    try {
+        const lastRedirect = parseInt(sessionStorage.getItem('last_login_redirect') || '0');
+        const now = Date.now();
+        let count = parseInt(sessionStorage.getItem('login_redirect_count') || '0');
+
+        // Si la última redirección fue hace menos de 10 segundos
+        if (now - lastRedirect < 10000) {
+            count++;
+        } else {
+            count = 1;
+        }
+        
+        sessionStorage.setItem('last_login_redirect', now.toString());
+        sessionStorage.setItem('login_redirect_count', count.toString());
+
+        if (count > 3) {
+            console.error('⛔ Bucle de redirección detectado. Deteniendo redirección automática.');
+            if (window.supabaseConfig && window.supabaseConfig.getSupabaseClient) {
+                window.supabaseConfig.getSupabaseClient().then(c => c.auth.signOut().catch(() => {}));
+            }
+            sessionStorage.removeItem('login_redirect_count'); // Reset para el próximo login manual
+            if (loaderText) loaderText.textContent = 'Sesión expirada.';
+            
+            // Mostrar mensaje al usuario
+            const alertContainer = document.getElementById('alertContainer');
+            if (alertContainer) {
+                alertContainer.innerHTML = `
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                         Tu sesión anterior no pudo ser restaurada. Por favor, inicia sesión de nuevo.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `;
+            }
+            return;
+        }
+    } catch (e) { console.warn('Error en protección de bucles:', e); }
+
     window.isRedirecting = true;
 
     setTimeout(() => {

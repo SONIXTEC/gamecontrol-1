@@ -22,23 +22,38 @@ function mejorarAutenticacionMovil() {
     // Mejorar formularios de login en móvil
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
-        // Prevenir zoom en inputs en iOS
+        // Prevenir zoom en inputs en iOS de forma segura
         const inputs = loginForm.querySelectorAll('input');
+        
+        // Función throttle para evitar layout thrashing frecuente
+        let zoomTimeout;
+        const updateViewport = (content) => {
+             const viewport = document.querySelector('meta[name=viewport]');
+             if (viewport && viewport.getAttribute('content') !== content) {
+                 requestAnimationFrame(() => {
+                     viewport.setAttribute('content', content);
+                 });
+             }
+        };
+
         inputs.forEach(input => {
             input.addEventListener('focus', function() {
-                // Usar viewport meta tag dinámico para prevenir zoom
-                const viewport = document.querySelector('meta[name=viewport]');
-                if (viewport) {
-                    viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-                }
+                // Solo aplicar en iOS donde el zoom es problemático
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (!isIOS) return;
+
+                clearTimeout(zoomTimeout);
+                updateViewport('width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
             });
             
             input.addEventListener('blur', function() {
-                // Restaurar zoom después del blur
-                const viewport = document.querySelector('meta[name=viewport]');
-                if (viewport) {
-                    viewport.setAttribute('content', 'width=device-width, initial-scale=1.0');
-                }
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (!isIOS) return;
+
+                clearTimeout(zoomTimeout);
+                zoomTimeout = setTimeout(() => {
+                    updateViewport('width=device-width, initial-scale=1.0');
+                }, 100);
             });
         });
         
