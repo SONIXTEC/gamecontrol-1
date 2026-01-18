@@ -194,7 +194,10 @@ async function obtenerSesiones() {
             console.log('  - Filas obtenidas de BD:', filas);
             
             // Mapear columnas BD -> estructura UI
-            const sesionesMapeadas = filas.map((row) => ({
+            const sesionesMapeadas = filas.map((row) => {
+                const notas = row.notas ?? null;
+                const esLibre = typeof notas === 'string' && notas.includes('[TIEMPO_LIBRE]');
+                return ({
                 id: row.id,
                 salaId: row.sala_id || row.salaId,
                 estacion: row.estacion,
@@ -213,13 +216,16 @@ async function obtenerSesiones() {
                 totalProductos: row.total_productos ?? 0,
                 totalGeneral: row.total_general ?? 0,
                 metodoPago: (row.metodo_pago === 'digital') ? 'qr' : (row.metodo_pago ?? 'efectivo'),
+                notas,
+                modo: esLibre ? 'libre' : 'fijo',
                 estado: row.estado || (row.finalizada ? 'finalizada' : 'activa'),
                 finalizada: row.finalizada === true
                     || row.estado === 'finalizada'
                     || row.estado === 'cerrada'
                     || row.estado === 'cancelada'
                     || !!row.fecha_fin
-            }));
+            });
+            });
             
             console.log('  - Sesiones mapeadas desde BD:', sesionesMapeadas);
             
@@ -962,8 +968,11 @@ class GestorSalas {
             if (sesion) {
                 // Estación Ocupada
                 const tiempoInfo = this.formatearTemporizadorPreciso(sesion);
-                const colorTexto = tiempoInfo.excedido ? 'text-danger' : 'text-success';
-                const progreso = Math.min(100, (sesion.tiempo_transcurrido / sesion.tiempo_contratado) * 100);
+                const esLibre = !!tiempoInfo.esLibre;
+                const colorTexto = esLibre ? 'text-info' : (tiempoInfo.excedido ? 'text-danger' : 'text-success');
+                const transcurridoMin = Math.floor((Date.now() - new Date(sesion.fecha_inicio).getTime()) / 60000);
+                const baseMin = this.obtenerTiempoBaseSesion(sesion);
+                const progreso = (!esLibre && baseMin > 0) ? Math.min(100, (transcurridoMin / baseMin) * 100) : 0;
                 
                 estacionesHTML += `
                     <div class="col-6">
@@ -973,7 +982,7 @@ class GestorSalas {
                             
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25" style="font-size: 0.65rem;">${estacion}</span>
-                                <span class="badge bg-dark bg-opacity-50 text-light border border-secondary border-opacity-25" style="font-size: 0.6rem;">${sesion.tiempo_contratado}m</span>
+                                <span class="badge bg-dark bg-opacity-50 text-light border border-secondary border-opacity-25" style="font-size: 0.6rem;">${esLibre ? 'Libre' : `${baseMin}m`}</span>
                             </div>
 
                             <div class="fw-bold text-white text-truncate mb-1" style="font-size: 0.85rem;">
@@ -985,7 +994,7 @@ class GestorSalas {
                                     ${tiempoInfo.formato}
                                 </div>
                                 <div class="d-flex justify-content-between align-items-end mt-1">
-                                    <span class="text-secondary timer-mobile-status" style="font-size: 0.65rem;">${tiempoInfo.excedido ? 'Extra' : 'Restante'}</span>
+                                    <span class="text-secondary timer-mobile-status" style="font-size: 0.65rem;">${esLibre ? 'Transcurrido' : (tiempoInfo.excedido ? 'Extra' : 'Restante')}</span>
                                 </div>
                             </div>
 
@@ -1157,14 +1166,14 @@ class GestorSalas {
     
     generarHTMLSesionMinimal(sesion) {
         const tiempoInfo = this.formatearTemporizadorPreciso(sesion);
-        const claseEstado = tiempoInfo.excedido ? 'tiempo-excedido' : 'tiempo-normal';
+        const claseEstado = tiempoInfo.esLibre ? 'tiempo-normal' : (tiempoInfo.excedido ? 'tiempo-excedido' : 'tiempo-normal');
         
         return `
             <div class="estacion-sesion-minimal">
                 <div class="cliente-minimal">${sesion.cliente}</div>
                 <div class="tiempo-minimal ${claseEstado}" data-sesion-id="${sesion.id}">
                     <div class="temporizador">${tiempoInfo.formato}</div>
-                    <div class="tiempo-estado">${tiempoInfo.excedido ? 'Tiempo excedido' : 'Tiempo restante'}</div>
+                    <div class="tiempo-estado">${tiempoInfo.esLibre ? 'Transcurrido' : (tiempoInfo.excedido ? 'Tiempo excedido' : 'Tiempo restante')}</div>
                 </div>
                 <div class="acciones-rapidas-minimal d-flex gap-2 justify-content-center mt-2">
                     <button class="btn btn-action-minimal btn-add-time" 
@@ -1489,7 +1498,7 @@ class GestorSalas {
                 
                 // Calcular temporizador preciso
                 const tiempoInfo = this.formatearTemporizadorPreciso(sesion);
-                const claseEstado = tiempoInfo.excedido ? 'text-danger' : 'text-success';
+                const claseEstado = tiempoInfo.esLibre ? 'text-info' : (tiempoInfo.excedido ? 'text-danger' : 'text-success');
                 
                 return `
                     <tr>
@@ -1516,7 +1525,7 @@ class GestorSalas {
                                     <span class="temporizador-valor">${tiempoInfo.formato}</span>
                                 </div>
                                 <div class="tiempo-estado small ${claseEstado}">
-                                    ${tiempoInfo.excedido ? 'Tiempo excedido' : 'Tiempo restante'}
+                                    ${tiempoInfo.esLibre ? 'Transcurrido' : (tiempoInfo.excedido ? 'Tiempo excedido' : 'Tiempo restante')}
                                 </div>
                             </div>
                         </td>
@@ -1560,6 +1569,53 @@ class GestorSalas {
         
         // Actualizar temporizadores en las estaciones
         sesionesActivas.forEach(sesion => {
+            // Tiempo libre: mostrar transcurrido y no disparar alarmas/expiración
+            if (this.esSesionTiempoLibre(sesion)) {
+                const tiempoInfo = this.formatearTemporizadorPreciso(sesion);
+
+                const elementoEstacion = document.querySelector(`[data-sesion-id="${sesion.id}"] .temporizador`);
+                if (elementoEstacion) {
+                    elementoEstacion.textContent = tiempoInfo.formato;
+                    const contenedorTiempo = elementoEstacion.closest('.tiempo-minimal');
+                    if (contenedorTiempo) {
+                        contenedorTiempo.className = 'tiempo-minimal tiempo-normal';
+                        const estadoElement = contenedorTiempo.querySelector('.tiempo-estado');
+                        if (estadoElement) estadoElement.textContent = 'Transcurrido';
+                    }
+                }
+
+                const elementoTabla = document.querySelector(`[data-sesion-id="${sesion.id}"] .temporizador-valor`);
+                if (elementoTabla) {
+                    elementoTabla.textContent = tiempoInfo.formato;
+                    const contenedorRestante = elementoTabla.closest('.temporizador-restante');
+                    const estadoElement = contenedorRestante?.parentElement.querySelector('.tiempo-estado');
+                    if (contenedorRestante) {
+                        contenedorRestante.className = 'temporizador-restante text-info';
+                        if (estadoElement) {
+                            estadoElement.className = 'tiempo-estado small text-info';
+                            estadoElement.textContent = 'Transcurrido';
+                        }
+                    }
+                }
+
+                const elementoMobile = document.querySelector(`[data-sesion-id="${sesion.id}"] .timer-mobile-update`);
+                if (elementoMobile) {
+                    elementoMobile.textContent = tiempoInfo.formato;
+                    elementoMobile.classList.remove('text-success', 'text-danger');
+                    elementoMobile.classList.add('text-info');
+                    const statusMobile = elementoMobile.parentElement.querySelector('.timer-mobile-status');
+                    if (statusMobile) statusMobile.textContent = 'Transcurrido';
+                }
+
+                // Reiniciar tracking de alarmas si existía
+                try {
+                    this._alertasTiempoDisparadas && this._alertasTiempoDisparadas.delete(sesion.id);
+                    this._ultimaAlarmaMinuto && this._ultimaAlarmaMinuto.delete(sesion.id);
+                } catch (_) {}
+
+                return;
+            }
+
             // Cálculos comunes para detectar excedidos por minuto
             const inicioMs = new Date(sesion.fecha_inicio).getTime();
             const tiempoBase = this.obtenerTiempoBaseSesion(sesion);
@@ -1721,6 +1777,23 @@ class GestorSalas {
             // Template para móvil horizontal
             if (isMobileNative) {
                 contenedorOpciones.innerHTML = `
+                   <!-- Tiempo Libre (Cobro al cierre) -->
+                   <div class="col-12">
+                       <label class="d-flex align-items-center justify-content-between border rounded-3 p-3 bg-dark bg-opacity-25 option-card cursor-pointer w-100" style="border-color: rgba(255,255,255,0.1) !important;">
+                           <input type="radio" name="tiempoTarifa" value="0" class="d-none" onchange="actualizarSeleccionMobile(this)">
+                           <div class="d-flex align-items-center gap-2">
+                               <div class="bg-info bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                   <i class="fas fa-infinity text-info"></i>
+                               </div>
+                               <div class="text-start">
+                                   <div class="fw-bold text-white">Tiempo libre</div>
+                                   <div class="text-secondary small">Se cobra al cierre (redondea a horas)</div>
+                               </div>
+                           </div>
+                           <div class="text-info fw-bold small">Al cierre</div>
+                       </label>
+                   </div>
+
                    <!-- 15 Min -->
                    <!--
                    <div class="col-6">
@@ -1791,6 +1864,23 @@ class GestorSalas {
                 // Template Desktop (Original)
                 contenedorOpciones.innerHTML = `
                 <div class="row g-2">
+                    <div class="col-12">
+                        <label class="card h-100 border cursor-pointer option-card position-relative shadow-sm hover-shadow transition-all">
+                            <input type="radio" name="tiempoTarifa" value="0" class="d-none" onchange="this.closest('.row').querySelectorAll('.option-card').forEach(c => {c.classList.remove('border-primary', 'bg-light-primary'); c.classList.add('border-light')}); this.closest('label').classList.remove('border-light'); this.closest('label').classList.add('border-primary', 'bg-light-primary')">
+                            <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 44px; height: 44px; background: rgba(13, 202, 240, 0.12);">
+                                        <i class="fas fa-infinity text-info"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold text-dark mb-1">Tiempo libre</div>
+                                        <small class="text-muted d-block" style="font-size: 0.75rem">Se cobra al cierre (redondea a horas)</small>
+                                    </div>
+                                </div>
+                                <div class="fw-bold text-info">Al cierre</div>
+                            </div>
+                        </label>
+                    </div>
                     <div class="col-6">
                         <label class="card h-100 border cursor-pointer option-card position-relative shadow-sm hover-shadow transition-all">
                             <input type="radio" name="tiempoTarifa" value="30" class="d-none" onchange="this.closest('.row').querySelectorAll('.option-card').forEach(c => {c.classList.remove('border-primary', 'bg-light-primary'); c.classList.add('border-light')}); this.closest('label').classList.remove('border-light'); this.closest('label').classList.add('border-primary', 'bg-light-primary')">
@@ -1878,16 +1968,26 @@ class GestorSalas {
                     // Determinar tiempo y tarifa
                     let tiempo = 60; // Default
                     let tarifa = tarifas.t60 || 0;
+
+                    // Modo: tiempo libre
+                    const tiempoSeleccionadoRaw = formData.get('tiempoTarifa');
+                    const esTiempoLibre = String(tiempoSeleccionadoRaw) === '0';
                     
                     const tiempoPersonalizado = formData.get('tiempoPersonalizado');
-                    if (tiempoPersonalizado && parseInt(tiempoPersonalizado) > 0) {
+                    if (!esTiempoLibre && tiempoPersonalizado && parseInt(tiempoPersonalizado) > 0) {
                         tiempo = parseInt(tiempoPersonalizado);
                         tarifa = this.calcularTarifaPersonalizada(sala.id, tiempo);
                     } else {
-                        const tiempoSeleccionado = formData.get('tiempoTarifa');
-                        if (tiempoSeleccionado) {
-                            tiempo = parseInt(tiempoSeleccionado);
-                            tarifa = this.obtenerTarifaPorTiempo(sala.id, tiempo);
+                        if (esTiempoLibre) {
+                            // Para BD se requiere tiempo_contratado > 0. Usamos 60 como base neutra, pero el cobro real se calcula al cierre.
+                            tiempo = 60;
+                            tarifa = this.obtenerTarifaPorTiempo(sala.id, 60);
+                        } else {
+                            const tiempoSeleccionado = formData.get('tiempoTarifa');
+                            if (tiempoSeleccionado) {
+                                tiempo = parseInt(tiempoSeleccionado);
+                                tarifa = this.obtenerTarifaPorTiempo(sala.id, tiempo);
+                            }
                         }
                     }
                     
@@ -1901,6 +2001,7 @@ class GestorSalas {
                         tiempo_contratado: tiempo,
                         tiempo: tiempo,
                         tiempoOriginal: tiempo,
+                        modo: esTiempoLibre ? 'libre' : 'fijo',
                         tiempoAdicional: 0,
                         costoAdicional: 0,
                         total_general: 0, // Inicia en 0
@@ -1909,6 +2010,11 @@ class GestorSalas {
                         finalizada: false,
                         estado: 'activa'
                     };
+
+                    if (sesion.modo === 'libre') {
+                        // Marcar para reconstruir el modo al recargar desde BD
+                        sesion.notas = (sesion.notas ? `${sesion.notas}\n` : '') + '[TIEMPO_LIBRE]';
+                    }
 
                     // --- ESTRATEGIA: INSERT DIRECTO A SUPABASE ---
                     // Evitamos usar guardarSesiones() para la creación crítica
@@ -1953,7 +2059,7 @@ class GestorSalas {
                             finalizada: false,
                             productos: [],
                             tiempos_adicionales: [],
-                            notas: null
+                            notas: sesion.notas || null
                         };
 
                         // 2. Insertar
@@ -2020,6 +2126,14 @@ class GestorSalas {
         const actualizarCosto = () => {
             let tiempo = 60;
             let costo = tarifas.t60 || 0;
+
+            const radioLibre = modal.querySelector('input[name="tiempoTarifa"][value="0"]');
+            const esLibre = !!(radioLibre && radioLibre.checked);
+
+            if (esLibre) {
+                if (costoElement) costoElement.textContent = formatearMoneda(0);
+                return;
+            }
             
             if (tiempoPersonalizadoInput && tiempoPersonalizadoInput.value) {
                 tiempo = parseInt(tiempoPersonalizadoInput.value);
@@ -2092,7 +2206,11 @@ class GestorSalas {
         // Calcular costo de tiempo
         // CORRECCIÓN: Usar costoAdicional SI existe, SINO calcular desde array (para evitar duplicación)
         const costoExtras = (sesion.costoAdicional || 0) || (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
-        const tarifaTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + costoExtras;
+        const esLibre = this.esSesionTiempoLibre(sesion);
+        const tarifaTiempoBase = esLibre
+            ? this.calcularTarifaTiempoLibre(sala.id, duracionTotal)
+            : (sesion.tarifa_base || sesion.tarifa || 0);
+        const tarifaTiempo = tarifaTiempoBase + costoExtras;
         
         // Calcular costo de productos
         const totalProductos = sesion.productos?.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) || 0;
@@ -2205,6 +2323,49 @@ class GestorSalas {
                                                 <i class="fas fa-qrcode text-dark me-2"></i>QR/Digital
                                             </label>
                                         </div>
+                                        <div class="col-12">
+                                            <input type="radio" class="btn-check" name="metodoPago" id="parcial" value="parcial">
+                                            <label class="btn btn-outline-secondary w-100 btn-sm py-2 border-0 shadow-sm bg-white text-start" for="parcial">
+                                                <i class="fas fa-sliders-h text-warning me-2"></i>Pago parcial (Efectivo + Transferencia)
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Pago Parcial (Oculto por defecto) -->
+                                    <div id="pagoParcialContainer" class="mt-3 d-none animate__animated animate__fadeIn" data-total="${totalGeneral}">
+                                        <div class="bg-light p-3 rounded-3 border border-warning bg-opacity-10">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <i class="fas fa-coins text-warning me-2"></i>
+                                                <span class="fw-bold text-dark small">Desglose del pago</span>
+                                            </div>
+
+                                            <div class="row g-2">
+                                                <div class="col-6">
+                                                    <label class="form-label small text-muted mb-1">Efectivo</label>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">$</span>
+                                                        <input type="number" min="0" step="1" inputmode="numeric" class="form-control" id="montoEfectivoParcial" placeholder="0">
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small text-muted mb-1">Transferencia</label>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">$</span>
+                                                        <input type="number" min="0" step="1" inputmode="numeric" class="form-control" id="montoTransferParcial" placeholder="0">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-flex justify-content-between small mt-2">
+                                                <span class="text-muted">Debe sumar:</span>
+                                                <span class="fw-bold" id="pagoParcialTotalObjetivo">${formatearMoneda(totalGeneral)}</span>
+                                            </div>
+                                            <div class="d-flex justify-content-between small">
+                                                <span class="text-muted">Restante:</span>
+                                                <span class="fw-bold" id="pagoParcialRestante">${formatearMoneda(totalGeneral)}</span>
+                                            </div>
+                                            <div class="small mt-2 text-danger d-none" id="pagoParcialError">La suma debe ser igual al total.</div>
+                                        </div>
                                     </div>
                                     
                                     <!-- Detalles de Transferencia (Oculto por defecto) -->
@@ -2296,14 +2457,47 @@ class GestorSalas {
         const metodoTexto = document.getElementById('metodoSeleccionadoTexto');
         const detallesTransferencia = document.getElementById('detallesTransferencia');
         const detallesQR = document.getElementById('detallesQR');
+        const pagoParcialContainer = document.getElementById('pagoParcialContainer');
+        const montoEfectivo = document.getElementById('montoEfectivoParcial');
+        const montoTransfer = document.getElementById('montoTransferParcial');
+        const restanteEl = document.getElementById('pagoParcialRestante');
+        const errorEl = document.getElementById('pagoParcialError');
         
+        const parseMonto = (v) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+        };
+
+        const getTotalParcial = () => {
+            const t = Number(pagoParcialContainer?.dataset?.total);
+            return Number.isFinite(t) ? t : 0;
+        };
+
+        const actualizarParcialUI = () => {
+            if (!pagoParcialContainer) return;
+            const total = getTotalParcial();
+            const efectivo = parseMonto(montoEfectivo?.value);
+            const transfer = parseMonto(montoTransfer?.value);
+            const restante = Math.round(total - (efectivo + transfer));
+
+            if (restanteEl) {
+                restanteEl.textContent = formatearMoneda(Math.max(0, restante));
+                restanteEl.classList.toggle('text-danger', restante !== 0);
+                restanteEl.classList.toggle('text-success', restante === 0);
+            }
+            if (errorEl) {
+                errorEl.classList.toggle('d-none', restante === 0);
+            }
+        };
+
         radiosPago.forEach(radio => {
             radio.addEventListener('change', function() {
                 const metodosTexto = {
                     'efectivo': 'Efectivo',
                     'tarjeta': 'Tarjeta',
                     'transferencia': 'Transferencia',
-                    'qr': 'QR/Digital'
+                    'qr': 'QR/Digital',
+                    'parcial': 'Pago parcial'
                 };
                 if (metodoTexto) {
                     metodoTexto.textContent = metodosTexto[this.value] || this.value;
@@ -2313,23 +2507,46 @@ class GestorSalas {
                 if (this.value === 'transferencia') {
                     detallesTransferencia.classList.remove('d-none');
                     if(detallesQR) detallesQR.classList.add('d-none');
+                    if (pagoParcialContainer) pagoParcialContainer.classList.add('d-none');
                 } else if (this.value === 'qr') {
                     if(detallesQR) detallesQR.classList.remove('d-none');
                     detallesTransferencia.classList.add('d-none');
+                    if (pagoParcialContainer) pagoParcialContainer.classList.add('d-none');
+                } else if (this.value === 'parcial') {
+                    if (pagoParcialContainer) {
+                        pagoParcialContainer.classList.remove('d-none');
+                        // Sugerencia: llenar transferencia con lo restante
+                        const total = getTotalParcial();
+                        const efectivo = parseMonto(montoEfectivo?.value);
+                        if (montoTransfer && !montoTransfer.value) {
+                            montoTransfer.value = String(Math.max(0, Math.round(total - efectivo)));
+                        }
+                        actualizarParcialUI();
+                    }
+                    // Mostrar datos de transferencia, porque es parte del pago parcial
+                    if (detallesTransferencia) detallesTransferencia.classList.remove('d-none');
+                    if (detallesQR) detallesQR.classList.add('d-none');
                 } else {
                     detallesTransferencia.classList.add('d-none');
                     if(detallesQR) detallesQR.classList.add('d-none');
+                    if (pagoParcialContainer) pagoParcialContainer.classList.add('d-none');
                 }
             });
         });
+
+        // Inputs de pago parcial
+        if (montoEfectivo) montoEfectivo.addEventListener('input', actualizarParcialUI);
+        if (montoTransfer) montoTransfer.addEventListener('input', actualizarParcialUI);
     }
 
     async procesarFinalizacion(sesionId) {
         const sesionIndex = this.sesiones.findIndex(s => s.id === sesionId);
         if (sesionIndex === -1) return;
 
-        const metodoPago = document.querySelector('input[name="metodoPago"]:checked')?.value || 'efectivo';
+        const metodoPagoSeleccionado = document.querySelector('input[name="metodoPago"]:checked')?.value || 'efectivo';
         const notas = document.getElementById('notasFinalizacion')?.value || '';
+        const montoEfectivoParcial = document.getElementById('montoEfectivoParcial');
+        const montoTransferParcial = document.getElementById('montoTransferParcial');
         
         // Obtener información del usuario logueado
         const usuarioLogueado = verificarAutenticacion();
@@ -2339,19 +2556,79 @@ class GestorSalas {
         this.sesiones[sesionIndex].finalizada = true;
         this.sesiones[sesionIndex].fin = new Date().toISOString();
         this.sesiones[sesionIndex].fecha_fin = new Date().toISOString();
+        // Guardamos un método compatible con la BD.
+        // Para 'parcial', persistimos como 'transferencia' si hubo transferencia, si no como 'efectivo'.
+        let metodoPago = metodoPagoSeleccionado;
+        if (metodoPagoSeleccionado === 'parcial') {
+            const efectivo = Math.max(0, Math.round(Number(montoEfectivoParcial?.value) || 0));
+            const transferencia = Math.max(0, Math.round(Number(montoTransferParcial?.value) || 0));
+            metodoPago = transferencia > 0 ? 'transferencia' : 'efectivo';
+            // Guardar desglose en notas (sin perder TIEMPO_LIBRE si aplica)
+            const sinMarcadorParcial = String(this.sesiones[sesionIndex].notas || '')
+                .split('\n')
+                .filter(l => !String(l).startsWith('[PAGO_PARCIAL]'))
+                .join('\n')
+                .trim();
+            const linea = `[PAGO_PARCIAL] efectivo:${efectivo} transferencia:${transferencia}`;
+            this.sesiones[sesionIndex].notas = (sinMarcadorParcial ? `${sinMarcadorParcial}\n` : '') + linea;
+        }
+
         this.sesiones[sesionIndex].metodoPago = metodoPago;
         this.sesiones[sesionIndex].vendedor = nombreVendedor;
-        if (notas) {
-            this.sesiones[sesionIndex].notas = notas;
+        {
+            const eraLibre = this.esSesionTiempoLibre(this.sesiones[sesionIndex]);
+            if (notas) {
+                this.sesiones[sesionIndex].notas = eraLibre ? this.construirNotasTiempoLibre(notas) : notas;
+            } else if (eraLibre && !this.esSesionTiempoLibre(this.sesiones[sesionIndex])) {
+                // Fallback extremo: si por alguna razón se perdió el marcador, restaurarlo.
+                this.sesiones[sesionIndex].notas = this.construirNotasTiempoLibre('');
+            }
         }
 
         // Calcular totales para el registro
         const sesion = this.sesiones[sesionIndex];
         // CORRECCIÓN: Usar costoAdicional SI existe, SINO calcular desde array (para evitar duplicación)
         const costoExtras = (sesion.costoAdicional || 0) || (sesion.tiemposAdicionales?.reduce((sum, t) => sum + (t.costo || 0), 0) || 0);
-        const tarifaTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + costoExtras;
+
+        const esLibre = this.esSesionTiempoLibre(sesion);
+        let tarifaTiempoBase = (sesion.tarifa_base || sesion.tarifa || 0);
+        if (esLibre) {
+            const ahora = new Date();
+            const inicio = new Date(sesion.fecha_inicio);
+            const duracionMin = Math.max(1, Math.ceil((ahora - inicio) / (1000 * 60)));
+            const minutosFacturados = Math.max(60, Math.ceil(duracionMin / 60) * 60);
+            sesion.tiempoOriginal = minutosFacturados;
+            sesion.tiempo = minutosFacturados;
+            sesion.tiempo_contratado = minutosFacturados;
+            tarifaTiempoBase = this.calcularTarifaTiempoLibre(sesion.salaId || sesion.sala_id, duracionMin);
+
+            // Asegurar que la nota conserve el marcador (sin duplicarlo)
+            const notaUsuario = this.extraerNotaUsuarioTiempoLibre(sesion.notas);
+            sesion.notas = this.construirNotasTiempoLibre(notaUsuario);
+        }
+
+        const tarifaTiempo = tarifaTiempoBase + costoExtras;
         const totalProductos = sesion.productos?.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0) || 0;
         const totalGeneral = tarifaTiempo + totalProductos;
+
+        // Validación final del pago parcial contra el total real
+        if (metodoPagoSeleccionado === 'parcial') {
+            const efectivo = Math.max(0, Math.round(Number(montoEfectivoParcial?.value) || 0));
+            const transferencia = Math.max(0, Math.round(Number(montoTransferParcial?.value) || 0));
+            const diff = Math.round(totalGeneral - (efectivo + transferencia));
+            if (diff !== 0) {
+                alert('Pago parcial inválido: la suma de efectivo + transferencia debe ser igual al total.');
+                return;
+            }
+            // Re-aplicar marcador (por si notas se reescribió luego)
+            const sinMarcadorParcial = String(sesion.notas || '')
+                .split('\n')
+                .filter(l => !String(l).startsWith('[PAGO_PARCIAL]'))
+                .join('\n')
+                .trim();
+            const linea = `[PAGO_PARCIAL] efectivo:${efectivo} transferencia:${transferencia}`;
+            sesion.notas = (sinMarcadorParcial ? `${sinMarcadorParcial}\n` : '') + linea;
+        }
 
         sesion.totalTiempo = tarifaTiempo;
         sesion.totalProductos = totalProductos;
@@ -3004,6 +3281,21 @@ class GestorSalas {
         const inicio = new Date(sesion.fecha_inicio);
         const ahora = new Date();
         const tiempoTranscurridoMs = ahora - inicio;
+
+        // Tiempo libre: mostrar tiempo TRANSCURRIDO (no restante)
+        if (this.esSesionTiempoLibre(sesion)) {
+            const horas = Math.floor(tiempoTranscurridoMs / (1000 * 60 * 60));
+            const minutos = Math.floor((tiempoTranscurridoMs % (1000 * 60 * 60)) / (1000 * 60));
+            const segundos = Math.floor((tiempoTranscurridoMs % (1000 * 60)) / 1000);
+            return {
+                horas,
+                minutos,
+                segundos,
+                excedido: false,
+                esLibre: true,
+                formato: `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`
+            };
+        }
         
         // Calcular tiempo total en milisegundos
         const tiempoBase = this.obtenerTiempoBaseSesion(sesion);
@@ -3023,8 +3315,50 @@ class GestorSalas {
             minutos,
             segundos,
             excedido,
+            esLibre: false,
             formato: `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`
         };
+    }
+
+    esSesionTiempoLibre(sesion) {
+        if (!sesion) return false;
+        if (sesion.modo === 'libre') return true;
+        const notas = typeof sesion.notas === 'string' ? sesion.notas : '';
+        return notas.includes('[TIEMPO_LIBRE]');
+    }
+
+    construirNotasTiempoLibre(notaUsuario) {
+        const base = '[TIEMPO_LIBRE]';
+        const extra = (notaUsuario || '').trim();
+        return extra ? `${base}\n${extra}` : base;
+    }
+
+    extraerNotaUsuarioTiempoLibre(notas) {
+        if (typeof notas !== 'string') return '';
+        return notas.replace('[TIEMPO_LIBRE]', '').trim();
+    }
+
+    calcularTarifaTiempoLibre(salaId, duracionMinutos) {
+        // Regla: redondear hacia arriba a horas enteras
+        const minutos = Math.max(1, Number(duracionMinutos) || 0);
+        const horas = Math.max(1, Math.ceil(minutos / 60));
+
+        const sala = this.salas?.find(s => s.id === salaId);
+        const tarifas = sala ? this._obtenerTarifasConfiguradas(sala) : null;
+        const t60 = tarifas ? (Number(tarifas.t60) || 0) : 0;
+        const t120 = tarifas ? (Number(tarifas.t120) || 0) : 0;
+        if (!t60 && !t120) return 0;
+
+        // Si hay t120, usar bloques de 2h cuando convenga (3h = 2h + 1h)
+        if (t120) {
+            const bloques2h = Math.floor(horas / 2);
+            const resto1h = horas % 2;
+            const parte2h = bloques2h * t120;
+            const parte1h = resto1h * (t60 || Math.round(t120 / 2));
+            return Number(parte2h + parte1h) || 0;
+        }
+
+        return Number(horas * t60) || 0;
     }
     
     actualizarTarifaDiferenciada(salaId, tiempo, nuevaTarifa) {
