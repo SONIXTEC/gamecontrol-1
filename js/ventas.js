@@ -404,7 +404,7 @@ class GestorVentas {
         const { etiqueta: salaInfo } = this.resolverInfoSala(sesion);
         const inicio = new Date(sesion.fecha_inicio || sesion.inicio);
         const total = this.calcularTotalSesion(sesion);
-        const metodoPago = this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo');
+        const metodoPago = this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion);
         
         return `
         <div class="venta-card">
@@ -509,7 +509,7 @@ class GestorVentas {
                 : '-';
             
             // Método de pago
-            const metodoPago = this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo');
+            const metodoPago = this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion);
             
             return `
                 <tr>
@@ -586,12 +586,31 @@ class GestorVentas {
         }
     }
 
-    obtenerNombreMetodoPago(metodo) {
+    obtenerNombreMetodoPago(metodo, sesion = null) {
+        // Si es pago parcial, construir el texto detallado
+        if (metodo === 'parcial' && sesion) {
+            const partes = [];
+            if (sesion.monto_efectivo > 0) {
+                partes.push(`Ef: ${formatearMoneda(sesion.monto_efectivo)}`);
+            }
+            if (sesion.monto_transferencia > 0) {
+                partes.push(`Trans: ${formatearMoneda(sesion.monto_transferencia)}`);
+            }
+            if (sesion.monto_tarjeta > 0) {
+                partes.push(`Tarj: ${formatearMoneda(sesion.monto_tarjeta)}`);
+            }
+            if (sesion.monto_digital > 0) {
+                partes.push(`Dig: ${formatearMoneda(sesion.monto_digital)}`);
+            }
+            return partes.length > 0 ? `Parcial (${partes.join(' + ')})` : 'Pago Parcial';
+        }
+        
         const nombres = {
             'efectivo': 'Efectivo',
             'tarjeta': 'Tarjeta',
             'transferencia': 'Transferencia',
-            'qr': 'QR/Digital'
+            'qr': 'QR/Digital',
+            'parcial': 'Pago Parcial'
         };
         return nombres[metodo] || metodo;
     }
@@ -601,7 +620,8 @@ class GestorVentas {
             'efectivo': 'fas fa-money-bill-wave',
             'tarjeta': 'fas fa-credit-card',
             'transferencia': 'fas fa-university',
-            'qr': 'fas fa-qrcode'
+            'qr': 'fas fa-qrcode',
+            'parcial': 'fas fa-sliders-h'
         };
         return iconos[metodo] || 'fas fa-money-bill-wave';
     }
@@ -611,7 +631,8 @@ class GestorVentas {
             'efectivo': 'metodo-efectivo',
             'tarjeta': 'metodo-tarjeta',
             'transferencia': 'metodo-transferencia',
-            'qr': 'metodo-qr'
+            'qr': 'metodo-qr',
+            'parcial': 'metodo-parcial'
         };
         return clases[metodo] || 'metodo-efectivo';
     }
@@ -917,7 +938,7 @@ class GestorVentas {
                                     <div>
                                         <span class="metodo-pago-badge ${this.obtenerClaseMetodoPago(sesion.metodoPago || 'efectivo')}">
                                             <i class="${this.obtenerIconoMetodoPago(sesion.metodoPago || 'efectivo')}"></i>
-                                            ${this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo')}
+                                            ${this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion)}
                                         </span>
                                     </div>
                                 </li>
@@ -1236,7 +1257,7 @@ class GestorVentas {
                         <p class="highlight">${sesion.cliente}</p>
                         <p>ID Sesión: ${sesion.id.slice(-8)}</p>
                         <p>Vendedor: ${sesion.vendedor || 'No asignado'}</p>
-                        <p>Método de Pago: <span class="method-badge">${this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo')}</span></p>
+                        <p>Método de Pago: <span class="method-badge">${this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion)}</span></p>
                     </div>
                     
                     <div class="info-box">

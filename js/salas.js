@@ -409,26 +409,56 @@ async function guardarVentaContableDesdeSesion(sesion) {
         const usuarioIdCandidate = (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null;
         const usuarioId = (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null) || (isUuid(authUid) ? authUid : null);
 
+        // Extraer montos de pago parcial si aplica
+        let montoEfectivo = null;
+        let montoTransferencia = null;
+        let montoTarjeta = null;
+        let montoDigital = null;
+        
+        if (metodoPago === 'parcial' && sesion.notas) {
+            // Parsear [PAGO_PARCIAL] efectivo:5000 transferencia:3000
+            const match = sesion.notas.match(/\[PAGO_PARCIAL\]([^\n]+)/);
+            if (match) {
+                const detalles = match[1];
+                const efectivoMatch = detalles.match(/efectivo:(\d+)/);
+                const transferenciaMatch = detalles.match(/transferencia:(\d+)/);
+                const tarjetaMatch = detalles.match(/tarjeta:(\d+)/);
+                const digitalMatch = detalles.match(/digital:(\d+)/);
+                
+                if (efectivoMatch) montoEfectivo = Number(efectivoMatch[1]);
+                if (transferenciaMatch) montoTransferencia = Number(transferenciaMatch[1]);
+                if (tarjetaMatch) montoTarjeta = Number(tarjetaMatch[1]);
+                if (digitalMatch) montoDigital = Number(digitalMatch[1]);
+            }
+        }
+
         // 1) Upsert lógico por sesion_id (unique)
         let ventaId = null;
+        const ventaData = {
+            sesion_id: sesion.id,
+            sala_id: sesion.salaId || sesion.sala_id || null,
+            usuario_id: usuarioId,
+            cliente: sesion.cliente || 'Cliente',
+            estacion: sesion.estacion || null,
+            fecha_inicio: sesion.fecha_inicio || sesion.inicio || null,
+            fecha_cierre: sesion.fecha_fin || sesion.fin || new Date().toISOString(),
+            metodo_pago: metodoPago,
+            estado: 'cerrada',
+            subtotal_tiempo: subtotalTiempo,
+            subtotal_productos: subtotalProductos,
+            descuento,
+            total,
+            notas: sesion.notas || null,
+            vendedor: sesion.vendedor || null,
+            // Agregar montos parciales si aplica
+            monto_efectivo: montoEfectivo,
+            monto_transferencia: montoTransferencia,
+            monto_tarjeta: montoTarjeta,
+            monto_digital: montoDigital
+        };
+        
         try {
-            const insertRes = await window.databaseService.insert('ventas', {
-                sesion_id: sesion.id,
-                sala_id: sesion.salaId || sesion.sala_id || null,
-                usuario_id: usuarioId,
-                cliente: sesion.cliente || 'Cliente',
-                estacion: sesion.estacion || null,
-                fecha_inicio: sesion.fecha_inicio || sesion.inicio || null,
-                fecha_cierre: sesion.fecha_fin || sesion.fin || new Date().toISOString(),
-                metodo_pago: metodoPago,
-                estado: 'cerrada',
-                subtotal_tiempo: subtotalTiempo,
-                subtotal_productos: subtotalProductos,
-                descuento,
-                total,
-                notas: sesion.notas || null,
-                vendedor: sesion.vendedor || null
-            });
+            const insertRes = await window.databaseService.insert('ventas', ventaData);
             ventaId = insertRes?.data?.id || null;
         } catch (e) {
             // Si ya existe por UNIQUE(sesion_id), buscamos y actualizamos
@@ -447,25 +477,12 @@ async function guardarVentaContableDesdeSesion(sesion) {
             if (!ventaId) throw new Error('No se pudo resolver venta existente por sesion_id.');
 
             await window.databaseService.update('ventas', ventaId, {
-                sala_id: sesion.salaId || sesion.sala_id || null,
-                usuario_id: usuarioId,
-                cliente: sesion.cliente || 'Cliente',
-                estacion: sesion.estacion || null,
-                fecha_inicio: sesion.fecha_inicio || sesion.inicio || null,
-                fecha_cierre: sesion.fecha_fin || sesion.fin || new Date().toISOString(),
-                metodo_pago: metodoPago,
-                estado: 'cerrada',
-                subtotal_tiempo: subtotalTiempo,
-                subtotal_productos: subtotalProductos,
-                descuento,
-                total,
-                notas: sesion.notas || null,
-                vendedor: sesion.vendedor || null,
+                ...ventaData,
                 updated_at: new Date().toISOString()
             });
         }
 
-        // 2) Reescribir items (delete+insert)
+        // 2) Reescribir items (delete+insert)        // 2) Reescribir items (delete+insert)
         try {
             const existentes = await window.databaseService.select('venta_items', {
                 filtros: { venta_id: ventaId },
@@ -2556,13 +2573,14 @@ class GestorSalas {
         this.sesiones[sesionIndex].finalizada = true;
         this.sesiones[sesionIndex].fin = new Date().toISOString();
         this.sesiones[sesionIndex].fecha_fin = new Date().toISOString();
-        // Guardamos un método compatible con la BD.
-        // Para 'parcial', persistimos como 'transferencia' si hubo transferencia, si no como 'efectivo'.
+        
+        // Guardar método de pago y detalles de pago parcial
         let metodoPago = metodoPagoSeleccionado;
+        
         if (metodoPagoSeleccionado === 'parcial') {
             const efectivo = Math.max(0, Math.round(Number(montoEfectivoParcial?.value) || 0));
             const transferencia = Math.max(0, Math.round(Number(montoTransferParcial?.value) || 0));
-            metodoPago = transferencia > 0 ? 'transferencia' : 'efectivo';
+            
             // Guardar desglose en notas (sin perder TIEMPO_LIBRE si aplica)
             const sinMarcadorParcial = String(this.sesiones[sesionIndex].notas || '')
                 .split('\n')
@@ -2571,6 +2589,10 @@ class GestorSalas {
                 .trim();
             const linea = `[PAGO_PARCIAL] efectivo:${efectivo} transferencia:${transferencia}`;
             this.sesiones[sesionIndex].notas = (sinMarcadorParcial ? `${sinMarcadorParcial}\n` : '') + linea;
+            
+            // Guardar montos directamente en la sesión
+            this.sesiones[sesionIndex].monto_efectivo = efectivo;
+            this.sesiones[sesionIndex].monto_transferencia = transferencia;
         }
 
         this.sesiones[sesionIndex].metodoPago = metodoPago;
@@ -2676,15 +2698,23 @@ class GestorSalas {
         }
 
         // Mostrar confirmación
-        const metodosTexto = {
-            'efectivo': 'efectivo',
-            'tarjeta': 'tarjeta',
-            'transferencia': 'transferencia',
-            'qr': 'QR'
-        };
+        let mensajePago = '';
+        if (metodoPago === 'parcial') {
+            const efectivo = this.sesiones[sesionIndex].monto_efectivo || 0;
+            const transferencia = this.sesiones[sesionIndex].monto_transferencia || 0;
+            mensajePago = `efectivo: ${formatearMoneda(efectivo)} + transferencia: ${formatearMoneda(transferencia)}`;
+        } else {
+            const metodosTexto = {
+                'efectivo': 'efectivo',
+                'tarjeta': 'tarjeta',
+                'transferencia': 'transferencia',
+                'qr': 'QR'
+            };
+            mensajePago = metodosTexto[metodoPago] || metodoPago;
+        }
         
         mostrarNotificacion(
-            `Sesión finalizada correctamente. Total cobrado: ${formatearMoneda(totalGeneral)} (${metodosTexto[metodoPago]})`,
+            `Sesión finalizada correctamente. Total cobrado: ${formatearMoneda(totalGeneral)} (${mensajePago})`,
             'success'
         );
     }

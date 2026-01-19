@@ -275,7 +275,7 @@ class GestorUsuarios {
             permisos[checkbox.value] = true;
         });
 
-        // Guardar en Supabase primero (vía RPC crear_usuario)
+        // Guardar en Supabase
         try {
             if (!window.databaseService) {
                 alert('Servicio de base de datos no disponible. Verifica la conexión.');
@@ -283,13 +283,81 @@ class GestorUsuarios {
             }
 
             const client = await window.databaseService.getClient();
-            const { data: rpcData, error: rpcError } = await client.rpc('crear_usuario', {
-                p_nombre: nombre,
-                p_email: email,
-                p_password: password,
-                p_rol: rol,
-                p_permisos: permisos
-            });
+            let authUserId = null;
+
+            // 1. Intentar crear usuario en Supabase Auth PRIMERO para garantizar sincronización de IDs
+            try {
+                if (window.supabaseConfig && typeof window.supabaseConfig.createTempClient === 'function') {
+                    console.log('🔐 Creando usuario en Auth para sincronización...');
+                    const tempClient = await window.supabaseConfig.createTempClient({
+                        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+                    });
+                    const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
+                        email: email,
+                        password: password,
+                        options: {
+                            data: { full_name: nombre, rol: rol }
+                        }
+                    });
+
+                    if (signUpError) {
+                        console.warn('⚠️ Error creando usuario en Auth:', signUpError.message);
+                        if (signUpError.message && signUpError.message.includes('registered')) {
+                            alert('El usuario ya está registrado en el sistema de autenticación. No se puede crear de nuevo.');
+                            return;
+                        }
+                        // Si falla auth, PREGUNTAR si continuar (creará usuario desincronizado) o abortar
+                        if (!confirm('Error al crear login en Supabase Auth (' + signUpError.message + '). ¿Deseas crear el usuario en la base de datos de todos modos? (El usuario no podrá iniciar sesión hasta que se arregle manualmente).')) {
+                            return;
+                        }
+                    } else if (signUpData?.user?.id) {
+                        authUserId = signUpData.user.id;
+                        console.log('✅ Usuario Auth creado ID:', authUserId);
+                    }
+                }
+            } catch (authErr) {
+                console.warn('⚠️ Excepción en Auth:', authErr);
+            }
+
+            // 2. Insertar en tabla pública (RPC)
+            // Intentamos llamar a la nueva versión con p_id
+            let rpcData, rpcError;
+            
+            try {
+                const params = {
+                    p_nombre: nombre,
+                    p_email: email,
+                    p_password: password,
+                    p_rol: rol,
+                    p_permisos: permisos
+                };
+                
+                // Si tenemos Auth ID, lo añadimos
+                if (authUserId) {
+                    params.p_id = authUserId;
+                }
+
+                const result = await client.rpc('crear_usuario', params);
+                rpcData = result.data;
+                rpcError = result.error;
+            } catch (err) {
+                 // Si falla, probablemente es porque la RPC en BD no soporta p_id (versión vieja)
+                 if (authUserId && err.message && err.message.includes('argument')) {
+                    console.warn('⚠️ RPC antigua detectada. Reintentando sin p_id...');
+                    const paramsOld = {
+                        p_nombre: nombre,
+                        p_email: email,
+                        p_password: password,
+                        p_rol: rol,
+                        p_permisos: permisos
+                    };
+                    const resultOld = await client.rpc('crear_usuario', paramsOld);
+                    rpcData = resultOld.data;
+                    rpcError = resultOld.error;
+                 } else {
+                     throw err;
+                 }
+            }
 
             if (rpcError) {
                 console.error('❌ Error RPC crear_usuario:', rpcError);
@@ -317,27 +385,6 @@ class GestorUsuarios {
             this.actualizarEstadisticas();
             this.cargarUsuariosEnTabla();
 
-            // Intentar crear también el usuario en Supabase Auth sin afectar la sesión actual
-            try {
-                if (window.supabaseConfig && typeof window.supabaseConfig.createTempClient === 'function') {
-                    const tempClient = await window.supabaseConfig.createTempClient({
-                        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
-                    });
-                    const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
-                        email: email,
-                        password: password
-                    });
-                    if (signUpError) {
-                        console.warn('⚠️ No se pudo registrar en Supabase Auth (continuando):', signUpError.message || signUpError);
-                        mostrarToast('Usuario creado, pero no se pudo registrar en Auth (puede ya existir o requerir confirmación).', 'warning');
-                    } else {
-                        mostrarToast('Usuario registrado en Supabase Auth', 'success');
-                    }
-                }
-            } catch (authErr) {
-                console.warn('⚠️ Error creando usuario en Supabase Auth (no bloqueante):', authErr);
-                mostrarToast('Usuario creado, pero ocurrió un error registrando en Auth', 'warning');
-            }
         } catch (error) {
             console.error('Error creando usuario en Supabase:', error);
             alert('Error guardando en Supabase: ' + (error?.message || 'Desconocido'));

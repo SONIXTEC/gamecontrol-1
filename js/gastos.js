@@ -97,19 +97,42 @@ class GestorGastos {
 
     async cargarCategorias() {
         try {
-            // Intentar cargar desde configuración
-            const resultado = await window.databaseService.select('configuracion', {
-                filtros: { clave: 'categorias_gastos' }
-            });
+            // Intentar cargar desde configuración (soporta 2 esquemas):
+            // 1) key-value: columnas clave/valor
+            // 2) fila única: columna datos (JSONB) con keys dentro
 
-            if (resultado.success && resultado.data.length > 0) {
-                this.categorias = resultado.data[0].valor || [];
-            } else {
-                // Si no existe, usar categorías por defecto (podríamos crearlas en BD)
+            if (!window.databaseService) {
                 this.categorias = [];
-                // Opcional: Crear registro inicial en configuracion
+                return this.categorias;
             }
-            return this.categorias;
+
+            try {
+                const resultado = await window.databaseService.select('configuracion', {
+                    filtros: { clave: 'categorias_gastos' },
+                    limite: 1,
+                    noCache: true
+                });
+
+                if (resultado.success && resultado.data.length > 0) {
+                    const row = resultado.data[0];
+                    this.categorias = Array.isArray(row.valor) ? row.valor : (row.valor || []);
+                } else {
+                    this.categorias = [];
+                }
+                return this.categorias;
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : String(e);
+                const esEsquemaFilaUnica = msg.includes('configuracion.clave') && msg.includes('does not exist');
+                if (!esEsquemaFilaUnica) throw e;
+
+                // Fallback: esquema fila única (configuracion.datos)
+                const resAny = await window.databaseService.select('configuracion', { limite: 1, noCache: true });
+                const row0 = (resAny && resAny.success && Array.isArray(resAny.data) && resAny.data[0]) ? resAny.data[0] : null;
+                const datos = row0 && typeof row0.datos === 'object' && row0.datos ? row0.datos : {};
+                const valor = datos.categorias_gastos;
+                this.categorias = Array.isArray(valor) ? valor : [];
+                return this.categorias;
+            }
         } catch (error) {
             console.error('Error cargando categorías:', error);
             this.categorias = [];
@@ -119,28 +142,57 @@ class GestorGastos {
 
     async guardarCategorias(categorias) {
         try {
-            // Buscar si ya existe la configuración
-            const resultado = await window.databaseService.select('configuracion', {
-                filtros: { clave: 'categorias_gastos' }
-            });
+            if (!window.databaseService) return;
 
-            if (resultado.success && resultado.data.length > 0) {
-                // Actualizar
-                await window.databaseService.update('configuracion', resultado.data[0].id, {
-                    valor: categorias,
-                    fecha_actualizacion: new Date().toISOString()
+            // Intentar esquema key-value primero
+            try {
+                const resultado = await window.databaseService.select('configuracion', {
+                    filtros: { clave: 'categorias_gastos' },
+                    limite: 1,
+                    noCache: true
                 });
-            } else {
-                // Insertar nueva
-                await window.databaseService.insert('configuracion', {
-                    clave: 'categorias_gastos',
-                    valor: categorias,
-                    tipo: 'json',
-                    categoria: 'sistema',
-                    descripcion: 'Categorías para el módulo de gastos'
-                });
+
+                if (resultado.success && resultado.data.length > 0) {
+                    await window.databaseService.update('configuracion', resultado.data[0].id, {
+                        valor: categorias,
+                        fecha_actualizacion: new Date().toISOString()
+                    });
+                } else {
+                    await window.databaseService.insert('configuracion', {
+                        clave: 'categorias_gastos',
+                        valor: categorias,
+                        tipo: 'json',
+                        categoria: 'sistema',
+                        descripcion: 'Categorías para el módulo de gastos'
+                    });
+                }
+
+                this.categorias = categorias;
+                return;
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : String(e);
+                const esEsquemaFilaUnica = msg.includes('configuracion.clave') && msg.includes('does not exist');
+                if (!esEsquemaFilaUnica) throw e;
+
+                // Fallback: esquema fila única (configuracion.datos)
+                const resAny = await window.databaseService.select('configuracion', { limite: 1, noCache: true });
+                const row0 = (resAny && resAny.success && Array.isArray(resAny.data) && resAny.data[0]) ? resAny.data[0] : null;
+                const datosActuales = row0 && typeof row0.datos === 'object' && row0.datos ? row0.datos : {};
+                const datosNuevos = { ...datosActuales, categorias_gastos: categorias };
+
+                if (row0 && row0.id != null) {
+                    await window.databaseService.update('configuracion', row0.id, {
+                        datos: datosNuevos,
+                        updated_at: new Date().toISOString()
+                    });
+                } else {
+                    await window.databaseService.insert('configuracion', {
+                        datos: datosNuevos
+                    });
+                }
+
+                this.categorias = categorias;
             }
-            this.categorias = categorias;
         } catch (error) {
             console.error('Error guardando categorías:', error);
             alert('Error al guardar las categorías en la base de datos.');

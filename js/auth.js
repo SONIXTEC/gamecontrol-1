@@ -220,7 +220,7 @@ class SupabaseAuthSystem {
                 const { data: dataByEmail, error: emailError } = await this.client
                     .from('usuarios')
                     .select('*')
-                    .eq('email', email)
+                    .eq('email', String(email).toLowerCase())
                     .eq('estado', 'activo')
                     .single();
 

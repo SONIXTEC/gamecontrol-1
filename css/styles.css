@@ -5536,6 +5536,39 @@ body {
     border-color: rgba(23, 162, 184, 0.3);
 }
 
+.metodo-parcial {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    border-color: rgba(255, 193, 7, 0.3);
+    font-size: 0.85rem;
+}
+
+/* Dark mode adaptations for payment methods */
+[data-theme="dark"] .metodo-efectivo {
+    background: rgba(40, 167, 69, 0.2);
+    color: #4caf50;
+}
+
+[data-theme="dark"] .metodo-tarjeta {
+    background: rgba(0, 123, 255, 0.2);
+    color: #2196f3;
+}
+
+[data-theme="dark"] .metodo-transferencia {
+    background: rgba(108, 117, 125, 0.2);
+    color: #9e9e9e;
+}
+
+[data-theme="dark"] .metodo-qr {
+    background: rgba(23, 162, 184, 0.2);
+    color: #00bcd4;
+}
+
+[data-theme="dark"] .metodo-parcial {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffd54f;
+}
+
 /* ===============================================
    AVATARES PEQUEÑOS PARA TABLA
    =============================================== */
@@ -5585,6 +5618,57 @@ body {
 
 .table .btn-group .btn:last-child {
     margin-right: 0;
+}
+
+/* ===============================================
+   BOTONES DE ACCIONES - STOCK (Más pequeños y pulidos)
+   =============================================== */
+.action-buttons-stock {
+    gap: 0.35rem !important;
+}
+
+.btn-icon-action {
+    padding: 0.25rem 0.5rem !important;
+    min-width: 32px;
+    height: 32px;
+    border-radius: 8px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    border-width: 1.5px;
+}
+
+.btn-icon-action i {
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.btn-icon-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+html[data-theme="dark"] .btn-icon-action:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.btn-icon-action.btn-outline-primary:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.btn-icon-action.btn-outline-warning:hover {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+    color: white;
+}
+
+.btn-icon-action.btn-outline-danger:hover {
+    background-color: var(--danger-color);
+    border-color: var(--danger-color);
+    color: white;
 }
 
 /* Estado vacío de tabla */

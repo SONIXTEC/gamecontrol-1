@@ -342,82 +342,84 @@ async function autenticarConSupabase(email, password) {
     console.log('✅ Autenticación nativa exitosa. Obteniendo perfil...');
 
     // 2) Obtener perfil extendido desde public.usuarios
-    // Usamos el email para vincular, ya que el ID podría diferir si se migró manualmente
+    // Preferimos por id (auth.uid) y luego por email (compatibilidad legacy).
     let usuario = null;
-    
-    const { data: userData, error: userError } = await client
-      .from('usuarios')
-      .select('*')
-      .eq('email', email)
-      .single();
+    const uid = authData?.user?.id;
 
-    if (userError || !userData) {
-      console.warn('⚠️ Usuario autenticado pero sin perfil en public.usuarios:', userError);
-      // Determinar rol a partir de lista de administradores conocidos
+    const permisosPorRol = (rol) => {
+      if (rol === 'administrador') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: true, ajustes: true };
+      if (rol === 'supervisor') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: false, ajustes: false };
+      if (rol === 'operador') return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
+      return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
+    };
+
+    // Buscar por id
+    if (uid) {
+      const { data: byId, error: byIdError } = await client
+        .from('usuarios')
+        .select('*')
+        .eq('id', uid)
+        .single();
+
+      if (!byIdError && byId) {
+        usuario = byId;
+      }
+    }
+
+    // Fallback: buscar por email
+    if (!usuario) {
+      const { data: byEmail, error: byEmailError } = await client
+        .from('usuarios')
+        .select('*')
+        .eq('email', String(email || '').toLowerCase())
+        .single();
+
+      if (!byEmailError && byEmail) {
+        usuario = byEmail;
+      }
+    }
+
+    // Si no existe perfil, crear uno (solo INSERT) con id=auth.uid
+    if (!usuario) {
+      console.warn('⚠️ Usuario autenticado pero sin perfil en public.usuarios. Creando perfil...');
+
       const adminEmails = ['maurochica23@gmail.com', 'admin@gamecontrol.com', 'admin@sonixtec.co'];
       const esAdmin = adminEmails.includes(String(email).toLowerCase());
       const rolAsignado = esAdmin ? 'administrador' : 'operador';
 
-      // Permisos por rol
-      const permisosPorRol = (rol) => {
-        if (rol === 'administrador') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: true, ajustes: true };
-        if (rol === 'supervisor') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: false, ajustes: false };
-        if (rol === 'operador') return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
-        return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
+      const nuevoPerfil = {
+        id: uid,
+        email: String(email || '').toLowerCase(),
+        nombre: authData.user.user_metadata?.nombre || String(email || '').split('@')[0],
+        rol: rolAsignado,
+        estado: 'activo',
+        password_hash: 'managed_by_auth',
+        permisos: permisosPorRol(rolAsignado)
       };
 
-      // Intentar crear/actualizar perfil en public.usuarios para evitar futuros downgrades
       try {
-        const { data: upsertData, error: upsertError } = await client
+        const { data: insertData, error: insertError } = await client
           .from('usuarios')
-          .upsert({
-            email: email,
-            nombre: authData.user.user_metadata?.nombre || email.split('@')[0],
-            rol: rolAsignado,
-            estado: 'activo',
-            password_hash: 'managed_by_auth',
-            permisos: permisosPorRol(rolAsignado)
-          }, { onConflict: 'email' })
+          .insert(nuevoPerfil)
           .select()
           .single();
 
-        if (!upsertError && upsertData) {
-          usuario = upsertData;
+        if (!insertError && insertData) {
+          usuario = insertData;
         } else {
-          console.warn('⚠️ No se pudo upsert el perfil, usando perfil temporal', upsertError);
-          usuario = {
-            id: authData.user.id,
-            nombre: authData.user.user_metadata?.nombre || email.split('@')[0],
-            email: email,
-            rol: rolAsignado,
-            permisos: permisosPorRol(rolAsignado),
-            estado: 'activo'
-          };
+          console.warn('⚠️ No se pudo crear perfil en usuarios, usando temporal:', insertError);
+          usuario = { ...nuevoPerfil };
         }
       } catch (err) {
         console.warn('⚠️ Error creando perfil en usuarios, usando temporal:', err);
-        usuario = {
-          id: authData.user.id,
-          nombre: authData.user.user_metadata?.nombre || email.split('@')[0],
-          email: email,
-          rol: rolAsignado,
-          permisos: permisosPorRol(rolAsignado),
-          estado: 'activo'
-        };
+        usuario = { ...nuevoPerfil };
       }
-    } else {
-      usuario = userData;
-      // Asegurar permisos si faltan
-      if (!usuario.permisos || Object.keys(usuario.permisos || {}).length === 0) {
-        const rol = usuario.rol || 'operador';
-        const permisosPorRol = (r) => {
-          if (r === 'administrador') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: true, ajustes: true };
-          if (r === 'supervisor') return { dashboard: true, salas: true, ventas: true, gastos: true, stock: true, reportes: true, usuarios: false, ajustes: false };
-          if (r === 'operador') return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
-          return { dashboard: true, salas: true, ventas: true, gastos: false, stock: true, reportes: false, usuarios: false, ajustes: false };
-        };
-        usuario.permisos = permisosPorRol(rol);
-      }
+    }
+
+    // Asegurar permisos si faltan
+    if (usuario && (!usuario.permisos || Object.keys(usuario.permisos || {}).length === 0)) {
+      const rol = usuario.rol || 'operador';
+      usuario.permisos = permisosPorRol(rol);
     }
 
     // 3) Verificar estado del usuario

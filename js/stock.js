@@ -345,78 +345,149 @@ class GestorStock {
     }
 
     parseCategoriasConfig(valor) {
-        if (!valor) return [];
-        if (Array.isArray(valor)) return valor;
-        if (typeof valor === 'object') return Array.isArray(valor.categorias) ? valor.categorias : [];
+        console.log('🔧 [parseCategoriasConfig] Procesando valor:', typeof valor, valor);
+        if (!valor) {
+            console.log('🔧 [parseCategoriasConfig] Valor vacío, retornando []');
+            return [];
+        }
+        if (Array.isArray(valor)) {
+            console.log('🔧 [parseCategoriasConfig] Es array, retornando:', valor.length, 'elementos');
+            return valor;
+        }
+        if (typeof valor === 'object') {
+            const result = Array.isArray(valor.categorias) ? valor.categorias : [];
+            console.log('🔧 [parseCategoriasConfig] Es objeto, retornando:', result.length, 'elementos');
+            return result;
+        }
         if (typeof valor === 'string') {
             try {
                 const parsed = JSON.parse(valor);
-                if (Array.isArray(parsed)) return parsed;
-                if (parsed && Array.isArray(parsed.categorias)) return parsed.categorias;
-            } catch (_) {}
+                if (Array.isArray(parsed)) {
+                    console.log('🔧 [parseCategoriasConfig] String parseado a array:', parsed.length, 'elementos');
+                    return parsed;
+                }
+                if (parsed && Array.isArray(parsed.categorias)) {
+                    console.log('🔧 [parseCategoriasConfig] String parseado a objeto con categorias:', parsed.categorias.length);
+                    return parsed.categorias;
+                }
+            } catch (e) {
+                console.warn('🔧 [parseCategoriasConfig] Error parseando string:', e);
+            }
         }
+        console.log('🔧 [parseCategoriasConfig] Ningún caso coincidió, retornando []');
         return [];
     }
 
     async cargarCategoriasRemotas() {
         try {
-            if (!window.databaseService) return;
-            const resultado = await window.databaseService.select('configuracion', {
-                filtros: { clave: 'categorias_productos' },
-                limite: 1,
-                noCache: true
+            console.log('📥 [cargarCategoriasRemotas] Inicio - Consultando tabla categorias_productos...');
+            if (!window.databaseService) {
+                console.warn('⚠️ DatabaseService no disponible para cargar categorías');
+                return;
+            }
+            
+            // Consultar directamente la tabla categorias_productos
+            const resultado = await window.databaseService.select('categorias_productos', { 
+                ordenPor: { campo: 'nombre', direccion: 'asc' },
+                noCache: true 
             });
-            const row = (resultado && resultado.success && Array.isArray(resultado.data) && resultado.data[0]) ? resultado.data[0] : null;
-            const valor = row ? (row.valor ?? row.datos ?? row.json ?? null) : null;
-            this.categorias = this.parseCategoriasConfig(valor);
+            
+            console.log('📥 [cargarCategoriasRemotas] Resultado SELECT:', resultado);
+            
+            if (resultado && resultado.success && Array.isArray(resultado.data)) {
+                this.categorias = resultado.data.map(cat => ({
+                    id: cat.id,
+                    nombre: cat.nombre,
+                    color: cat.color || 'primary',
+                    icono: cat.icono || 'fas fa-box',
+                    estado: cat.estado || 'activa',
+                    fechaCreacion: cat.fecha_creacion || cat.created_at
+                }));
+                console.log('✅ Categorías cargadas desde tabla:', this.categorias.length, 'categorías');
+            } else {
+                console.log('ℹ️ No hay categorías en la tabla');
+                this.categorias = [];
+            }
+            
             this.actualizarSelectCategorias();
             this.actualizarTablaCategorias();
         } catch (e) {
-            console.warn('⚠️ No se pudieron cargar categorías desde Supabase:', e?.message || e);
+            console.error('⚠️ Error en cargarCategoriasRemotas:', e?.message || e);
+            console.error('⚠️ Stack:', e);
+            this.categorias = [];
         }
     }
 
-    async guardarCategorias(categorias) {
-        this.categorias = Array.isArray(categorias) ? categorias : [];
+    async guardarCategoria(categoria) {
+        console.log('💾 [guardarCategoria] Guardando categoría:', categoria);
+        
         try {
-            if (!window.databaseService) return;
-            const resultado = await window.databaseService.select('configuracion', {
-                filtros: { clave: 'categorias_productos' },
-                limite: 1,
-                noCache: true
-            });
-            const row = (resultado && resultado.success && Array.isArray(resultado.data) && resultado.data[0]) ? resultado.data[0] : null;
-            const payload = {
-                clave: 'categorias_productos',
-                valor: this.categorias,
-                descripcion: 'Categorías de productos',
-                categoria: 'inventario',
-                tipo: 'json',
-                editable: true,
-                publico: false
+            if (!window.databaseService) {
+                console.warn('⚠️ DatabaseService no disponible');
+                return { success: false, error: 'DatabaseService no disponible' };
+            }
+            
+            // Preparar datos para Supabase
+            const datos = {
+                id: categoria.id,
+                nombre: categoria.nombre,
+                color: categoria.color || 'primary',
+                icono: categoria.icono || 'fas fa-box',
+                estado: categoria.estado || 'activa',
+                fecha_creacion: categoria.fechaCreacion || new Date().toISOString(),
+                updated_at: new Date().toISOString()
             };
-            if (row && row.id) {
-                await window.databaseService.update('configuracion', row.id, { valor: this.categorias });
+            
+            // Verificar si ya existe
+            const existente = await window.databaseService.select('categorias_productos', {
+                filtros: { id: categoria.id },
+                limite: 1
+            });
+            
+            if (existente && existente.data && existente.data.length > 0) {
+                // Actualizar existente
+                console.log('📝 [guardarCategoria] Actualizando categoría existente');
+                const resultado = await window.databaseService.update('categorias_productos', categoria.id, datos);
+                console.log('✅ Categoría actualizada:', resultado);
+                return resultado;
             } else {
-                await window.databaseService.insert('configuracion', payload);
+                // Insertar nueva
+                console.log('📝 [guardarCategoria] Insertando nueva categoría');
+                const resultado = await window.databaseService.insert('categorias_productos', datos);
+                console.log('✅ Categoría insertada:', resultado);
+                return resultado;
             }
         } catch (e) {
-            console.warn('⚠️ No se pudieron guardar categorías en Supabase:', e?.message || e);
+            console.error('❌ Error guardando categoría:', e?.message || e);
+            return { success: false, error: e?.message || e };
         }
     }
 
-    limpiarTodasLasCategorias() {
-        // Eliminar todas las categorías existentes
-        this.categorias = [];
-        this.guardarCategorias([]);
-        
-        // Actualizar interfaz
-        this.actualizarSelectCategorias();
-        this.actualizarTablaCategorias();
-        this.cargarProductos();
-        this.actualizarEstadisticas();
-        
-        console.log('Todas las categorías han sido eliminadas');
+    async limpiarTodasLasCategorias() {
+        try {
+            // Obtener todas las categorías
+            const resultado = await window.databaseService.select('categorias_productos');
+            
+            if (resultado && resultado.success && resultado.data) {
+                // Eliminar cada categoría
+                for (const cat of resultado.data) {
+                    await window.databaseService.delete('categorias_productos', cat.id);
+                }
+            }
+            
+            // Limpiar array local
+            this.categorias = [];
+            
+            // Actualizar interfaz
+            this.actualizarSelectCategorias();
+            this.actualizarTablaCategorias();
+            this.cargarProductos();
+            this.actualizarEstadisticas();
+            
+            console.log('✅ Todas las categorías han sido eliminadas');
+        } catch (e) {
+            console.error('❌ Error limpiando categorías:', e);
+        }
     }
 
     crearDatosEjemplo() {
@@ -546,15 +617,24 @@ class GestorStock {
             fechaCreacion: new Date().toISOString().split('T')[0]
         };
 
-        categorias.push(nuevaCategoria);
-        await this.guardarCategorias(categorias);
-
-        // Actualizar interfaz
-        this.actualizarSelectCategorias();
-        this.actualizarTablaCategorias();
-        this.limpiarFormularioNuevaCategoria();
-
-        alert('Categoría creada exitosamente');
+        console.log('📝 Guardando categoría:', nuevaCategoria);
+        
+        // Guardar directamente en la tabla
+        const resultado = await this.guardarCategoria(nuevaCategoria);
+        
+        if (resultado && resultado.success) {
+            console.log('✅ Categoría guardada exitosamente');
+            
+            // Recargar categorías desde la base de datos
+            await this.cargarCategoriasRemotas();
+            
+            // Limpiar formulario
+            this.limpiarFormularioNuevaCategoria();
+            alert('Categoría creada exitosamente');
+        } else {
+            console.error('❌ Error guardando categoría:', resultado?.error);
+            alert('Error: No se pudo guardar la categoría. ' + (resultado?.error || 'Intenta nuevamente.'));
+        }
     }
 
     generarIdCategoria(nombre) {
@@ -746,23 +826,23 @@ class GestorStock {
         }
 
         // Actualizar categoría
-        const categorias = this.cargarCategorias();
-        const indice = categorias.findIndex(cat => cat.id === this.categoriaEditando);
+        const categoriaActualizada = {
+            id: this.categoriaEditando,
+            nombre: nombre,
+            color: color,
+            icono: icono,
+            estado: estado
+        };
+
+        const resultado = await this.guardarCategoria(categoriaActualizada);
         
-        if (indice !== -1) {
-            categorias[indice] = {
-                ...categorias[indice],
-                nombre: nombre,
-                color: color,
-                icono: icono,
-                estado: estado
-            };
-
-            await this.guardarCategorias(categorias);
-
-            // Actualizar interfaz
-            this.actualizarSelectCategorias();
-            this.actualizarTablaCategorias();
+        if (resultado && resultado.success) {
+            console.log('✅ Categoría actualizada exitosamente');
+            
+            // Recargar categorías
+            await this.cargarCategoriasRemotas();
+            
+            // Actualizar productos si es necesario
             this.cargarProductos();
 
             // Cerrar modal
@@ -771,6 +851,8 @@ class GestorStock {
 
             this.categoriaEditando = null;
             alert('Categoría actualizada exitosamente');
+        } else {
+            alert('Error: No se pudo actualizar la categoría. ' + (resultado?.error || ''));
         }
     }
 
@@ -807,16 +889,24 @@ class GestorStock {
         }
 
         if (confirm(`¿Estás seguro de que deseas eliminar la categoría "${categoria.nombre}"?\n\nEsta acción no se puede deshacer.`)) {
-            const categorias = this.cargarCategorias();
-            const categoriasFiltradas = categorias.filter(cat => cat.id !== categoriaId);
-            
-            await this.guardarCategorias(categoriasFiltradas);
-
-            // Actualizar interfaz
-            this.actualizarSelectCategorias();
-            this.actualizarTablaCategorias();
-
-            alert('Categoría eliminada exitosamente');
+            try {
+                // Eliminar de la base de datos
+                const resultado = await window.databaseService.delete('categorias_productos', categoriaId);
+                
+                if (resultado && resultado.success) {
+                    console.log('✅ Categoría eliminada de la base de datos');
+                    
+                    // Recargar categorías
+                    await this.cargarCategoriasRemotas();
+                    
+                    alert('Categoría eliminada exitosamente');
+                } else {
+                    alert('Error: No se pudo eliminar la categoría.');
+                }
+            } catch (e) {
+                console.error('❌ Error eliminando categoría:', e);
+                alert('Error: ' + (e?.message || 'No se pudo eliminar la categoría'));
+            }
         }
     }
 
@@ -930,14 +1020,14 @@ class GestorStock {
                         <span class="badge ${estado.badgeClass}">${estado.texto}</span>
                     </td>
                     <td>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="window.gestorStock.ajustarStock('${producto.id}')" title="Ajustar stock">
+                        <div class="d-inline-flex gap-1 action-buttons-stock">
+                            <button type="button" class="btn btn-sm btn-outline-primary btn-icon-action" onclick="window.gestorStock.ajustarStock('${producto.id}')" title="Ajustar stock" aria-label="Ajustar stock">
                                 <i class="fas fa-plus-minus"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-warning" onclick="window.gestorStock.editarProducto('${producto.id}')" title="Editar">
+                            <button type="button" class="btn btn-sm btn-outline-warning btn-icon-action" onclick="window.gestorStock.editarProducto('${producto.id}')" title="Editar" aria-label="Editar">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="window.gestorStock.eliminarProducto('${producto.id}')" title="Eliminar">
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon-action" onclick="window.gestorStock.eliminarProducto('${producto.id}')" title="Eliminar" aria-label="Eliminar">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
