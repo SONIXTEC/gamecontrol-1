@@ -1,5 +1,7 @@
-// Gestión de Reportes - Sistema GameControl
-// Sincronización con todos los módulos del sistema
+// Gestión de Reportes - Sistema GameControl con Supabase
+// Versión: 2026-01-19 - Integración completa con base de datos
+
+console.log('✅ reportes.js v20260119 cargado - Usando Supabase');
 
 // Funciones de utilidad
 function formatearMoneda(cantidad) {
@@ -12,10 +14,21 @@ function formatearMoneda(cantidad) {
 }
 
 function formatearFecha(fecha) {
-    return new Date(fecha).toLocaleDateString('es-ES', {
+    if (!fecha) return '';
+    const fechaStr = fecha.toString();
+    if (fechaStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return new Date(fechaStr + 'T12:00:00').toLocaleDateString('es-CO', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            timeZone: 'America/Bogota'
+        });
+    }
+    return new Date(fecha).toLocaleDateString('es-CO', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
+        timeZone: 'America/Bogota'
     });
 }
 
@@ -23,34 +36,45 @@ function formatearPorcentaje(valor) {
     return `${valor.toFixed(1)}%`;
 }
 
-// Funciones para obtener datos del sistema
-function obtenerSesiones() {
-    return JSON.parse(localStorage.getItem('sesiones')) || [];
+// Funciones para obtener datos del sistema desde Supabase
+async function obtenerSesiones() {
+    if (!window.databaseService) return [];
+    const resultado = await window.databaseService.select('sesiones', {
+        ordenPor: { campo: 'fecha_inicio', direccion: 'desc' }
+    });
+    return resultado.success ? resultado.data : [];
 }
 
-function obtenerGastos() {
-    return JSON.parse(localStorage.getItem('gastos')) || [];
+async function obtenerVentas() {
+    if (!window.databaseService) return [];
+    const resultado = await window.databaseService.select('ventas', {
+        ordenPor: { campo: 'fecha_cierre', direccion: 'desc' }
+    });
+    return resultado.success ? resultado.data : [];
 }
 
-function obtenerSalas() {
-    return JSON.parse(localStorage.getItem('salas')) || [];
+async function obtenerGastos() {
+    if (!window.databaseService) return [];
+    const resultado = await window.databaseService.select('gastos', {
+        ordenPor: { campo: 'fecha_gasto', direccion: 'desc' }
+    });
+    return resultado.success ? resultado.data : [];
 }
 
-function obtenerProductos() {
-    return JSON.parse(localStorage.getItem('productos_stock')) || [];
+async function obtenerSalas() {
+    if (!window.databaseService) return [];
+    const resultado = await window.databaseService.select('salas', {
+        ordenPor: { campo: 'nombre', direccion: 'asc' }
+    });
+    return resultado.success ? resultado.data : [];
 }
 
-function obtenerMovimientos() {
-    return JSON.parse(localStorage.getItem('movimientos_stock')) || [];
-}
-
-function obtenerConfiguracion() {
-    const config = localStorage.getItem('configuracion');
-    return config ? JSON.parse(config) : {
-        tarifasPorSala: {},
-        tarifasPorTipo: {},
-        moneda: 'COP'
-    };
+async function obtenerProductos() {
+    if (!window.databaseService) return [];
+    const resultado = await window.databaseService.select('productos', {
+        ordenPor: { campo: 'nombre', direccion: 'asc' }
+    });
+    return resultado.success ? resultado.data : [];
 }
 
 class GestorReportes {
@@ -63,13 +87,46 @@ class GestorReportes {
             tipoReporte: 'ventas'
         };
         this.charts = {};
+        this.sesiones = [];
+        this.ventas = [];
+        this.gastos = [];
+        this.salas = [];
         this.init();
     }
 
-    init() {
-        this.configurarEventListeners();
-        this.aplicarFiltrosPorDefecto();
-        this.actualizarTodosLosReportes();
+    async init() {
+        try {
+            console.log('🚀 Iniciando GestorReportes con Supabase...');
+            
+            // Esperar a que databaseService esté disponible
+            if (!window.databaseService) {
+                console.warn('⚠️ databaseService no disponible, reintentando en 500ms...');
+                setTimeout(() => this.init(), 500);
+                return;
+            }
+
+            // Cargar datos desde BD
+            await this.cargarDatos();
+            
+            this.configurarEventListeners();
+            this.aplicarFiltrosPorDefecto();
+            await this.actualizarTodosLosReportes();
+            
+            console.log('✅ GestorReportes inicializado correctamente');
+        } catch (error) {
+            console.error('❌ Error inicializando GestorReportes:', error);
+        }
+    }
+
+    async cargarDatos() {
+        console.log('📥 Cargando datos desde BD...');
+        [this.sesiones, this.ventas, this.gastos, this.salas] = await Promise.all([
+            obtenerSesiones(),
+            obtenerVentas(),
+            obtenerGastos(),
+            obtenerSalas()
+        ]);
+        console.log(`✅ Datos cargados: ${this.sesiones.length} sesiones, ${this.ventas.length} ventas, ${this.gastos.length} gastos, ${this.salas.length} salas`);
     }
 
     // Obtener rango de fechas según período
@@ -115,7 +172,7 @@ class GestorReportes {
     }
 
     // Filtrar datos por período y sala
-    filtrarDatos(datos, campoFecha = 'fecha') {
+    filtrarDatos(datos, campoFecha = 'fecha_gasto') {
         let { fechaInicio, fechaFin } = this.obtenerRangoFechas(this.filtrosActivos.periodo);
 
         // Usar fechas personalizadas si están definidas
@@ -127,13 +184,21 @@ class GestorReportes {
         }
 
         let datosFiltrados = datos.filter(item => {
-            const fechaItem = new Date(item[campoFecha]);
+            // Determinar campo de fecha real
+            const campoReal = item.fecha_cierre ? 'fecha_cierre' : 
+                            item.fecha_inicio ? 'fecha_inicio' : 
+                            item.fecha_gasto ? 'fecha_gasto' : 'fecha';
+            
+            const fechaStr = item[campoReal];
+            if (!fechaStr) return false;
+            
+            const fechaItem = new Date(fechaStr + (fechaStr.length === 10 ? 'T12:00:00' : ''));
             return fechaItem >= fechaInicio && fechaItem <= fechaFin;
         });
 
         // Filtrar por sala si está especificada
-        if (this.filtrosActivos.sala && campoFecha === 'inicio') {
-            datosFiltrados = datosFiltrados.filter(item => item.salaId === this.filtrosActivos.sala);
+        if (this.filtrosActivos.sala && datos[0]?.sala_id) {
+            datosFiltrados = datosFiltrados.filter(item => item.sala_id === this.filtrosActivos.sala);
         }
 
         return datosFiltrados;
@@ -141,48 +206,148 @@ class GestorReportes {
 
     // Calcular métricas de ventas
     calcularMetricasVentas() {
-        const sesiones = this.filtrarDatos(obtenerSesiones().filter(s => s.finalizada), 'inicio');
+        // Priorizar tabla ventas si está disponible, sino usar sesiones
+        const usarVentas = this.ventas && this.ventas.length > 0;
         
-        const ingresosTotales = sesiones.reduce((total, sesion) => {
-            let totalSesion = sesion.tarifa_base || sesion.tarifa || 0;
+        if (usarVentas) {
+            // Usar tabla ventas (más precisa y completa)
+            const ventas = this.filtrarDatos(this.ventas.filter(v => v.estado === 'cerrada'), 'fecha_cierre');
             
-            // Agregar tiempos adicionales
-            if (sesion.costoAdicional) {
-                totalSesion += sesion.costoAdicional;
-            }
-            if (sesion.tiemposAdicionales) {
-                totalSesion += sesion.tiemposAdicionales.reduce((sum, t) => sum + (t.costo || 0), 0);
-            }
+            const ingresosTotales = ventas.reduce((total, venta) => {
+                return total + (venta.total || 0);
+            }, 0);
+
+            const totalTransacciones = ventas.length;
+            const ticketPromedio = totalTransacciones > 0 ? ingresosTotales / totalTransacciones : 0;
+            const clientesUnicos = new Set(ventas.map(v => v.cliente)).size;
+
+            // Calcular ingresos por método de pago (considerando pagos parciales)
+            const ingresosPorMetodo = {
+                efectivo: 0,
+                transferencia: 0,
+                tarjeta: 0,
+                digital: 0,
+                qr: 0
+            };
+
+            console.log('📊 Calculando ingresos por método desde tabla ventas:');
+            ventas.forEach(venta => {
+                let metodo = venta.metodo_pago || 'efectivo';
+                const monto = venta.total || 0;
+                
+                // Normalizar: digital = qr (igual que en ventas.js)
+                if (metodo === 'digital') metodo = 'qr';
+                
+                // Si es pago parcial, usar los montos específicos
+                if (metodo === 'parcial') {
+                    if (venta.monto_efectivo) {
+                        ingresosPorMetodo.efectivo += venta.monto_efectivo;
+                        console.log(`  ✓ Parcial - Efectivo: ${formatearMoneda(venta.monto_efectivo)} (Venta ${venta.id?.slice(0,8)})`);
+                    }
+                    if (venta.monto_transferencia) {
+                        ingresosPorMetodo.transferencia += venta.monto_transferencia;
+                        console.log(`  ✓ Parcial - Transferencia: ${formatearMoneda(venta.monto_transferencia)} (Venta ${venta.id?.slice(0,8)})`);
+                    }
+                    if (venta.monto_tarjeta) {
+                        ingresosPorMetodo.tarjeta += venta.monto_tarjeta;
+                        console.log(`  ✓ Parcial - Tarjeta: ${formatearMoneda(venta.monto_tarjeta)} (Venta ${venta.id?.slice(0,8)})`);
+                    }
+                    if (venta.monto_digital) {
+                        ingresosPorMetodo.qr += venta.monto_digital;
+                        console.log(`  ✓ Parcial - QR: ${formatearMoneda(venta.monto_digital)} (Venta ${venta.id?.slice(0,8)})`);
+                    }
+                } else {
+                    // Pago único por un método
+                    if (ingresosPorMetodo[metodo] !== undefined) {
+                        ingresosPorMetodo[metodo] += monto;
+                        console.log(`  ✓ ${metodo}: ${formatearMoneda(monto)} (Venta ${venta.id?.slice(0,8)})`);
+                    } else {
+                        console.warn(`  ⚠️ Método desconocido '${metodo}' con monto ${formatearMoneda(monto)}`);
+                    }
+                }
+            });
             
-            // Agregar productos
-            if (sesion.productos) {
-                totalSesion += sesion.productos.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0);
-            }
+            console.log('💰 Totales por método:');
+            console.log(`  Efectivo: ${formatearMoneda(ingresosPorMetodo.efectivo)}`);
+            console.log(`  Transferencia: ${formatearMoneda(ingresosPorMetodo.transferencia)}`);
+            console.log(`  Tarjeta: ${formatearMoneda(ingresosPorMetodo.tarjeta)}`);
+            console.log(`  QR/Digital: ${formatearMoneda(ingresosPorMetodo.qr)}`);
             
-            return total + totalSesion;
-        }, 0);
+            // Consolidar digital en qr
+            ingresosPorMetodo.digital = ingresosPorMetodo.qr;
 
-        const totalTransacciones = sesiones.length;
-        const ticketPromedio = totalTransacciones > 0 ? ingresosTotales / totalTransacciones : 0;
-        const clientesUnicos = new Set(sesiones.map(s => s.cliente)).size;
+            // Calcular comparación con período anterior
+            const periodoAnterior = this.obtenerDatosPeriodoAnterior(ventas, 'fecha_cierre');
+            const cambioIngresos = this.calcularCambioPorcentual(ingresosTotales, periodoAnterior.ingresos);
 
-        // Calcular comparación con período anterior
-        const periodoAnterior = this.obtenerDatosPeriodoAnterior(sesiones, 'inicio');
-        const cambioIngresos = this.calcularCambioPorcentual(ingresosTotales, periodoAnterior.ingresos);
+            return {
+                ingresosTotales,
+                totalTransacciones,
+                ticketPromedio,
+                clientesUnicos,
+                cambioIngresos,
+                ingresosPorMetodo,
+                ventas
+            };
+        } else {
+            // Fallback: usar sesiones
+            const sesiones = this.filtrarDatos(this.sesiones.filter(s => s.finalizada), 'fecha_inicio');
+            
+            const ingresosTotales = sesiones.reduce((total, sesion) => {
+                return total + (sesion.total_general || 0);
+            }, 0);
 
-        return {
-            ingresosTotales,
-            totalTransacciones,
-            ticketPromedio,
-            clientesUnicos,
-            cambioIngresos,
-            sesiones
-        };
+            const totalTransacciones = sesiones.length;
+            const ticketPromedio = totalTransacciones > 0 ? ingresosTotales / totalTransacciones : 0;
+            const clientesUnicos = new Set(sesiones.map(s => s.cliente)).size;
+
+            // Calcular ingresos por método de pago
+            const ingresosPorMetodo = {
+                efectivo: 0,
+                transferencia: 0,
+                tarjeta: 0,
+                digital: 0,
+                qr: 0
+            };
+
+            console.log('📊 Calculando ingresos por método desde sesiones (fallback):');
+            sesiones.forEach(sesion => {
+                let metodo = sesion.metodo_pago || 'efectivo';
+                const monto = sesion.total_general || 0;
+                
+                // Normalizar: digital = qr (igual que en ventas.js)
+                if (metodo === 'digital') metodo = 'qr';
+                
+                if (ingresosPorMetodo[metodo] !== undefined) {
+                    ingresosPorMetodo[metodo] += monto;
+                    console.log(`  ✓ ${metodo}: ${formatearMoneda(monto)}`);
+                } else {
+                    console.warn(`  ⚠️ Método desconocido '${metodo}' con monto ${formatearMoneda(monto)}`);
+                }
+            });
+            
+            // Consolidar digital en qr
+            ingresosPorMetodo.digital = ingresosPorMetodo.qr;
+
+            // Calcular comparación con período anterior
+            const periodoAnterior = this.obtenerDatosPeriodoAnterior(sesiones, 'fecha_inicio');
+            const cambioIngresos = this.calcularCambioPorcentual(ingresosTotales, periodoAnterior.ingresos);
+
+            return {
+                ingresosTotales,
+                totalTransacciones,
+                ticketPromedio,
+                clientesUnicos,
+                cambioIngresos,
+                ingresosPorMetodo,
+                sesiones
+            };
+        }
     }
 
     // Calcular métricas de gastos
     calcularMetricasGastos() {
-        const gastos = this.filtrarDatos(obtenerGastos());
+        const gastos = this.filtrarDatos(this.gastos);
         
         const gastosTotales = gastos.reduce((total, gasto) => total + gasto.monto, 0);
         const totalGastos = gastos.length;
@@ -194,8 +359,34 @@ class GestorReportes {
             return acc;
         }, {});
 
+        // Gastos por método de pago
+        const gastosPorMetodo = {
+            efectivo: 0,
+            transferencia: 0,
+            tarjeta: 0,
+            cheque: 0
+        };
+
+        console.log('💸 Calculando gastos por método:');
+        gastos.forEach(gasto => {
+            const metodo = gasto.metodo_pago || 'efectivo';
+            const monto = gasto.monto || 0;
+            if (gastosPorMetodo[metodo] !== undefined) {
+                gastosPorMetodo[metodo] += monto;
+                console.log(`  ✓ ${metodo}: ${formatearMoneda(monto)} (Gasto ${gasto.id?.slice(0,8)})`);
+            } else {
+                console.warn(`  ⚠️ Método desconocido '${metodo}' con monto ${formatearMoneda(monto)}`);
+            }
+        });
+        
+        console.log('💸 Totales gastos por método:');
+        console.log(`  Efectivo: ${formatearMoneda(gastosPorMetodo.efectivo)}`);
+        console.log(`  Transferencia: ${formatearMoneda(gastosPorMetodo.transferencia)}`);
+        console.log(`  Tarjeta: ${formatearMoneda(gastosPorMetodo.tarjeta)}`);
+        console.log(`  Cheque: ${formatearMoneda(gastosPorMetodo.cheque)}`);
+
         // Calcular comparación con período anterior
-        const periodoAnterior = this.obtenerDatosPeriodoAnterior(gastos, 'fecha');
+        const periodoAnterior = this.obtenerDatosPeriodoAnterior(gastos, 'fecha_gasto');
         const cambioGastos = this.calcularCambioPorcentual(gastosTotales, periodoAnterior.gastos);
 
         return {
@@ -203,6 +394,7 @@ class GestorReportes {
             totalGastos,
             gastoPromedio,
             gastosPorCategoria,
+            gastosPorMetodo,
             cambioGastos,
             gastos
         };
@@ -210,35 +402,26 @@ class GestorReportes {
 
     // Calcular métricas de ocupación
     calcularMetricasOcupacion() {
-        const salas = obtenerSalas();
-        const sesiones = this.filtrarDatos(obtenerSesiones().filter(s => s.finalizada), 'inicio');
+        const salas = this.salas;
+        const sesiones = this.filtrarDatos(this.sesiones.filter(s => s.finalizada), 'fecha_inicio');
         
-        const totalEstaciones = salas.reduce((total, sala) => total + sala.numEstaciones, 0);
+        const totalEstaciones = salas.reduce((total, sala) => total + (sala.num_estaciones || 1), 0);
         const horasDisponibles = totalEstaciones * 24; // Horas por día
 
         // Calcular horas de uso por sala
         const ocupacionPorSala = salas.map(sala => {
-            const sesionesSala = sesiones.filter(s => s.salaId === sala.id);
+            const sesionesSala = sesiones.filter(s => s.sala_id === sala.id);
             const horasUso = sesionesSala.reduce((total, sesion) => {
-                const inicio = new Date(sesion.fecha_inicio || sesion.inicio);
-                const fin = new Date(sesion.fecha_fin || sesion.fin || Date.now());
-                const duracion = (fin - inicio) / (1000 * 60 * 60); // Horas
+                const tiempoMinutos = sesion.tiempo_contratado + (sesion.tiempo_adicional || 0);
+                const duracion = tiempoMinutos / 60; // Convertir a horas
                 return total + duracion;
             }, 0);
 
             const ingresosSala = sesionesSala.reduce((total, sesion) => {
-                let totalSesion = sesion.tarifa_base || sesion.tarifa || 0;
-                if (sesion.costoAdicional) totalSesion += sesion.costoAdicional;
-                if (sesion.tiemposAdicionales) {
-                    totalSesion += sesion.tiemposAdicionales.reduce((sum, t) => sum + (t.costo || 0), 0);
-                }
-                if (sesion.productos) {
-                    totalSesion += sesion.productos.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0);
-                }
-                return total + totalSesion;
+                return total + (sesion.total_general || 0);
             }, 0);
 
-            const porcentajeOcupacion = (horasUso / (sala.numEstaciones * 24)) * 100;
+            const porcentajeOcupacion = ((horasUso / ((sala.num_estaciones || 1) * 24)) * 100);
 
             return {
                 nombre: sala.nombre,
@@ -257,22 +440,23 @@ class GestorReportes {
 
     // Calcular métricas de productos más vendidos
     calcularProductosMasVendidos() {
-        const sesiones = this.filtrarDatos(obtenerSesiones().filter(s => s.finalizada && s.productos), 'inicio');
+        const sesiones = this.filtrarDatos(this.sesiones.filter(s => s.finalizada && s.productos), 'fecha_inicio');
         
         const ventasProductos = {};
         
         sesiones.forEach(sesion => {
-            if (sesion.productos) {
+            if (sesion.productos && Array.isArray(sesion.productos)) {
                 sesion.productos.forEach(producto => {
-                    if (!ventasProductos[producto.nombre]) {
-                        ventasProductos[producto.nombre] = {
-                            nombre: producto.nombre,
+                    const nombre = producto.nombre || 'Sin nombre';
+                    if (!ventasProductos[nombre]) {
+                        ventasProductos[nombre] = {
+                            nombre: nombre,
                             cantidad: 0,
                             ingresos: 0
                         };
                     }
-                    ventasProductos[producto.nombre].cantidad += producto.cantidad;
-                    ventasProductos[producto.nombre].ingresos += producto.subtotal || (producto.cantidad * producto.precio);
+                    ventasProductos[nombre].cantidad += producto.cantidad;
+                    ventasProductos[nombre].ingresos += producto.subtotal || (producto.cantidad * producto.precio);
                 });
             }
         });
@@ -314,6 +498,15 @@ class GestorReportes {
         const cambioNeto = this.calcularCambioPorcentual(beneficioNeto, 
             (ventas.ingresosTotales * 0.85) - (gastos.gastosTotales * 0.95));
 
+        // Calcular saldo real por método de pago
+        const saldoPorMetodo = {
+            efectivo: (ventas.ingresosPorMetodo.efectivo || 0) - (gastos.gastosPorMetodo.efectivo || 0),
+            transferencia: (ventas.ingresosPorMetodo.transferencia || 0) - (gastos.gastosPorMetodo.transferencia || 0),
+            tarjeta: (ventas.ingresosPorMetodo.tarjeta || 0) - (gastos.gastosPorMetodo.tarjeta || 0)
+        };
+        
+        const saldoTotal = saldoPorMetodo.efectivo + saldoPorMetodo.transferencia + saldoPorMetodo.tarjeta;
+
         // Actualizar elementos del DOM
         this.actualizarElemento('.kpi-ingresos .kpi-valor', formatearMoneda(ventas.ingresosTotales));
         this.actualizarElemento('.kpi-ingresos .kpi-cambio', 
@@ -336,6 +529,19 @@ class GestorReportes {
         this.actualizarElemento('.kpi-clientes .kpi-valor', ventas.clientesUnicos);
         this.actualizarElemento('.kpi-clientes .kpi-cambio', 
             `${ventas.totalTransacciones} transacciones`);
+
+        // Actualizar saldos por método de pago
+        this.actualizarElemento('#saldoEfectivo', formatearMoneda(saldoPorMetodo.efectivo));
+        this.actualizarElemento('#saldoTransferencia', formatearMoneda(saldoPorMetodo.transferencia));
+        this.actualizarElemento('#saldoTarjeta', formatearMoneda(saldoPorMetodo.tarjeta));
+        this.actualizarElemento('#saldoTotal', formatearMoneda(saldoTotal));
+
+        // Mostrar desglose de dinero por método en consola
+        console.log('💰 Saldo por método de pago:');
+        console.log('   Efectivo:', formatearMoneda(saldoPorMetodo.efectivo));
+        console.log('   Transferencia:', formatearMoneda(saldoPorMetodo.transferencia));
+        console.log('   Tarjeta:', formatearMoneda(saldoPorMetodo.tarjeta));
+        console.log('   TOTAL:', formatearMoneda(saldoTotal));
     }
 
     // Actualizar tabla de productos más vendidos
@@ -578,8 +784,10 @@ class GestorReportes {
 
     // Generar datos para gráfico de evolución
     generarDatosEvolucion(fechaInicio, fechaFin) {
-        const sesiones = obtenerSesiones().filter(s => s.finalizada);
-        const gastos = obtenerGastos();
+        // Usar ventas si están disponibles, sino sesiones
+        const usarVentas = this.ventas && this.ventas.length > 0;
+        const ventas = usarVentas ? this.ventas.filter(v => v.estado === 'cerrada') : this.sesiones.filter(s => s.finalizada);
+        const gastos = this.gastos;
         
         const labels = [];
         const ingresos = [];
@@ -595,27 +803,21 @@ class GestorReportes {
             labels.push(formatearFecha(fecha));
             
             // Calcular ingresos del día
-            const ingresosDelDia = sesiones
-                .filter(s => {
-                    const fechaSesion = new Date(s.inicio);
-                    return fechaSesion.toDateString() === fecha.toDateString();
+            const campoFecha = usarVentas ? 'fecha_cierre' : 'fecha_inicio';
+            const ingresosDelDia = ventas
+                .filter(v => {
+                    const fechaVenta = new Date((v[campoFecha] || '') + 'T12:00:00');
+                    return fechaVenta.toDateString() === fecha.toDateString();
                 })
-                .reduce((total, sesion) => {
-                    let totalSesion = sesion.tarifa_base || sesion.tarifa || 0;
-                    if (sesion.costoAdicional) totalSesion += sesion.costoAdicional;
-                    if (sesion.tiemposAdicionales) {
-                        totalSesion += sesion.tiemposAdicionales.reduce((sum, t) => sum + (t.costo || 0), 0);
-                    }
-                    if (sesion.productos) {
-                        totalSesion += sesion.productos.reduce((sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0);
-                    }
-                    return total + totalSesion;
+                .reduce((total, venta) => {
+                    const monto = usarVentas ? (venta.total || 0) : (venta.total_general || 0);
+                    return total + monto;
                 }, 0);
 
             // Calcular gastos del día
             const gastosDelDia = gastos
                 .filter(g => {
-                    const fechaGasto = new Date(g.fecha);
+                    const fechaGasto = new Date((g.fecha_gasto || '') + 'T12:00:00');
                     return fechaGasto.toDateString() === fecha.toDateString();
                 })
                 .reduce((total, gasto) => total + gasto.monto, 0);
@@ -632,33 +834,34 @@ class GestorReportes {
         // Filtros
         const selectPeriodo = document.querySelector('select[data-filtro="periodo"]');
         if (selectPeriodo) {
-            selectPeriodo.addEventListener('change', (e) => {
+            selectPeriodo.addEventListener('change', async (e) => {
                 this.filtrosActivos.periodo = e.target.value;
-                this.actualizarTodosLosReportes();
+                await this.actualizarTodosLosReportes();
             });
         }
 
         const selectSala = document.querySelector('select[data-filtro="sala"]');
         if (selectSala) {
-            selectSala.addEventListener('change', (e) => {
+            selectSala.addEventListener('change', async (e) => {
                 this.filtrosActivos.sala = e.target.value;
-                this.actualizarTodosLosReportes();
+                await this.actualizarTodosLosReportes();
             });
         }
 
         const selectTipoReporte = document.querySelector('select[data-filtro="tipo"]');
         if (selectTipoReporte) {
-            selectTipoReporte.addEventListener('change', (e) => {
+            selectTipoReporte.addEventListener('change', async (e) => {
                 this.filtrosActivos.tipoReporte = e.target.value;
-                this.actualizarTodosLosReportes();
+                await this.actualizarTodosLosReportes();
             });
         }
 
         // Botón actualizar
         const btnActualizar = document.querySelector('.btn-actualizar-reportes');
         if (btnActualizar) {
-            btnActualizar.addEventListener('click', () => {
-                this.actualizarTodosLosReportes();
+            btnActualizar.addEventListener('click', async () => {
+                await this.cargarDatos(); // Recargar datos desde BD
+                await this.actualizarTodosLosReportes();
             });
         }
 
@@ -671,7 +874,7 @@ class GestorReportes {
         const selectSala = document.querySelector('select[data-filtro="sala"]');
         if (!selectSala) return;
 
-        const salas = obtenerSalas();
+        const salas = this.salas;
         
         selectSala.innerHTML = '<option value="">Todas las salas</option>' +
             salas.map(sala => `<option value="${sala.id}">${sala.nombre}</option>`).join('');
@@ -696,20 +899,24 @@ class GestorReportes {
     }
 
     // Actualizar todos los reportes
-    actualizarTodosLosReportes() {
-        // Limpiar gráficos existentes primero
-        this.limpiarGraficos();
-        
-        // Actualizar datos
-        this.actualizarKPIs();
-        this.actualizarTablaProductos();
-        this.actualizarTablaOcupacion();
-        
-        // Crear gráficos con un pequeño delay para evitar problemas de render
-        setTimeout(() => {
-            this.crearGraficoEvolucion();
-            this.crearGraficoDistribucion();
-        }, 100);
+    async actualizarTodosLosReportes() {
+        try {
+            // Limpiar gráficos existentes primero
+            this.limpiarGraficos();
+            
+            // Actualizar datos
+            this.actualizarKPIs();
+            this.actualizarTablaProductos();
+            this.actualizarTablaOcupacion();
+            
+            // Crear gráficos con un pequeño delay para evitar problemas de render
+            setTimeout(() => {
+                this.crearGraficoEvolucion();
+                this.crearGraficoDistribucion();
+            }, 100);
+        } catch (error) {
+            console.error('❌ Error actualizando reportes:', error);
+        }
     }
 
     // Funciones auxiliares para actualizar DOM

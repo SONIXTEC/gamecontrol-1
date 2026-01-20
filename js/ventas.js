@@ -218,6 +218,12 @@ class GestorVentas {
     }
 
     calcularTotalSesion(sesion) {
+        // Si hay filtro de método de pago activo y es pago parcial, devolver solo ese método
+        if (this.filtrosActivos && this.filtrosActivos.metodoPago && sesion.metodoPago === 'parcial') {
+            const campoMonto = `monto_${this.filtrosActivos.metodoPago}`;
+            return Number(sesion[campoMonto] || 0);
+        }
+        
         // Usar totales guardados si están disponibles y parecen correctos
         if (sesion.totalGeneral !== undefined && sesion.totalGeneral > 0) {
            return sesion.totalGeneral;
@@ -340,8 +346,22 @@ class GestorVentas {
 
         // Filtrar por método de pago
         if (this.filtrosActivos.metodoPago) {
-            sesiones = sesiones.filter(sesion => 
-                (sesion.metodoPago || 'efectivo') === this.filtrosActivos.metodoPago);
+            sesiones = sesiones.filter(sesion => {
+                const metodoPago = sesion.metodoPago || 'efectivo';
+                
+                // Si el método de pago coincide directamente
+                if (metodoPago === this.filtrosActivos.metodoPago) {
+                    return true;
+                }
+                
+                // Si es pago parcial, verificar si incluye el método filtrado
+                if (metodoPago === 'parcial') {
+                    const campoMonto = `monto_${this.filtrosActivos.metodoPago}`;
+                    return sesion[campoMonto] && sesion[campoMonto] > 0;
+                }
+                
+                return false;
+            });
         }
 
         return sesiones.sort((a, b) => this.obtenerFechaReferenciaSesion(b) - this.obtenerFechaReferenciaSesion(a));

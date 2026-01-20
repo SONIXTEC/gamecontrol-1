@@ -1,4 +1,9 @@
 // Gestión de Gastos - Sistema GameControl Avanzado (Supabase Edition)
+// Versión: 2026-01-19e - Zona horaria Colombia (UTC-5) implementada
+
+console.log('✅ gastos.js v20260119e cargado - Zona horaria Colombia + Editar gastos');
+console.log('🌎 Zona horaria: America/Bogota (UTC-5)');
+console.log('📅 Fecha actual Colombia:', obtenerFechaColombiaHoy());
 
 // Funciones utilitarias
 function formatearMoneda(cantidad) {
@@ -12,11 +17,28 @@ function formatearMoneda(cantidad) {
 
 function formatearFecha(fecha) {
     if (!fecha) return '';
-    // Ajustar zona horaria si es necesario o usar UTC
-    return new Date(fecha).toLocaleDateString('es-ES', {
+    
+    // Forzar interpretación como fecha local de Colombia (UTC-5)
+    // Si viene como "2026-01-17", la tratamos como fecha local, no UTC
+    const fechaStr = fecha.toString();
+    
+    // Si la fecha viene en formato YYYY-MM-DD, agregarle hora local para evitar conversión UTC
+    if (fechaStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Agregar T12:00:00 para que se interprete como mediodía local, no UTC
+        return new Date(fechaStr + 'T12:00:00').toLocaleDateString('es-CO', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            timeZone: 'America/Bogota'
+        });
+    }
+    
+    // Para otros formatos, usar directamente con zona horaria de Colombia
+    return new Date(fecha).toLocaleDateString('es-CO', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
+        timeZone: 'America/Bogota'
     });
 }
 
@@ -26,10 +48,26 @@ function generarId() {
         : 'gasto_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
+// Función para obtener fecha actual en zona horaria de Colombia (UTC-5)
+function obtenerFechaColombiaHoy() {
+    const ahora = new Date();
+    // Convertir a zona horaria de Colombia
+    const opciones = {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    };
+    
+    const formatter = new Intl.DateTimeFormat('en-CA', opciones); // en-CA usa formato YYYY-MM-DD
+    return formatter.format(ahora); // Retorna formato YYYY-MM-DD
+}
+
 class GestorGastos {
     constructor() {
         this.gastos = [];
         this.categorias = [];
+        this.gastoEnEdicion = null;
         this.filtrosActivos = {
             periodo: 'mes',
             fechaInicio: null,
@@ -57,6 +95,7 @@ class GestorGastos {
             await this.cargarGastos();
             
             this.configurarEventListeners();
+            this.configurarFormularioRegistro();
             this.configurarEventosGestionCategorias();
             this.actualizarSelectCategorias();
             this.aplicarFiltrosPorDefecto();
@@ -73,11 +112,13 @@ class GestorGastos {
 
     async cargarGastos() {
         try {
+            console.log('📥 Cargando gastos desde BD...');
             const resultado = await window.databaseService.select('gastos', {
                 ordenPor: { campo: 'fecha_gasto', direccion: 'desc' }
             });
             
             if (resultado.success) {
+                console.log(`✅ ${resultado.data.length} gastos cargados desde BD`);
                 // Mapear campos de BD a estructura interna si es necesario
                 // La estructura de BD es compatible, pero nos aseguramos
                 this.gastos = resultado.data.map(g => ({
@@ -85,54 +126,44 @@ class GestorGastos {
                     fecha: g.fecha_gasto, // Mapear fecha_gasto a fecha para compatibilidad
                     registradoPor: g.usuario_id || 'Sistema' // En el futuro se podría hacer join con usuarios
                 }));
+                console.log('📊 Gastos mapeados:', this.gastos.length);
+            } else {
+                console.warn('⚠️ No se pudieron cargar gastos:', resultado);
+                this.gastos = [];
             }
             
             this.cargarOpcionesProveedores();
             return this.gastos;
         } catch (error) {
-            console.error('Error cargando gastos:', error);
+            console.error('❌ Error cargando gastos:', error);
+            this.gastos = [];
             return [];
         }
     }
 
     async cargarCategorias() {
         try {
-            // Intentar cargar desde configuración (soporta 2 esquemas):
-            // 1) key-value: columnas clave/valor
-            // 2) fila única: columna datos (JSONB) con keys dentro
-
             if (!window.databaseService) {
                 this.categorias = [];
                 return this.categorias;
             }
 
-            try {
-                const resultado = await window.databaseService.select('configuracion', {
-                    filtros: { clave: 'categorias_gastos' },
-                    limite: 1,
-                    noCache: true
-                });
+            // Usar esquema singleton (fila única con datos JSONB)
+            const resultado = await window.databaseService.select('configuracion', { 
+                limite: 1, 
+                noCache: true 
+            });
 
-                if (resultado.success && resultado.data.length > 0) {
-                    const row = resultado.data[0];
-                    this.categorias = Array.isArray(row.valor) ? row.valor : (row.valor || []);
-                } else {
-                    this.categorias = [];
-                }
-                return this.categorias;
-            } catch (e) {
-                const msg = (e && e.message) ? e.message : String(e);
-                const esEsquemaFilaUnica = msg.includes('configuracion.clave') && msg.includes('does not exist');
-                if (!esEsquemaFilaUnica) throw e;
-
-                // Fallback: esquema fila única (configuracion.datos)
-                const resAny = await window.databaseService.select('configuracion', { limite: 1, noCache: true });
-                const row0 = (resAny && resAny.success && Array.isArray(resAny.data) && resAny.data[0]) ? resAny.data[0] : null;
-                const datos = row0 && typeof row0.datos === 'object' && row0.datos ? row0.datos : {};
+            if (resultado.success && resultado.data.length > 0) {
+                const row = resultado.data[0];
+                const datos = row && typeof row.datos === 'object' && row.datos ? row.datos : {};
                 const valor = datos.categorias_gastos;
                 this.categorias = Array.isArray(valor) ? valor : [];
-                return this.categorias;
+            } else {
+                this.categorias = [];
             }
+
+            return this.categorias;
         } catch (error) {
             console.error('Error cargando categorías:', error);
             this.categorias = [];
@@ -144,55 +175,30 @@ class GestorGastos {
         try {
             if (!window.databaseService) return;
 
-            // Intentar esquema key-value primero
-            try {
-                const resultado = await window.databaseService.select('configuracion', {
-                    filtros: { clave: 'categorias_gastos' },
-                    limite: 1,
-                    noCache: true
+            // Usar esquema singleton (fila única con datos JSONB)
+            const resultado = await window.databaseService.select('configuracion', { 
+                limite: 1, 
+                noCache: true 
+            });
+
+            const row = resultado.success && resultado.data.length > 0 ? resultado.data[0] : null;
+            const datosActuales = row && typeof row.datos === 'object' && row.datos ? row.datos : {};
+            const datosNuevos = { ...datosActuales, categorias_gastos: categorias };
+
+            if (row && row.id != null) {
+                await window.databaseService.update('configuracion', row.id, {
+                    datos: datosNuevos,
+                    updated_at: new Date().toISOString()
                 });
-
-                if (resultado.success && resultado.data.length > 0) {
-                    await window.databaseService.update('configuracion', resultado.data[0].id, {
-                        valor: categorias,
-                        fecha_actualizacion: new Date().toISOString()
-                    });
-                } else {
-                    await window.databaseService.insert('configuracion', {
-                        clave: 'categorias_gastos',
-                        valor: categorias,
-                        tipo: 'json',
-                        categoria: 'sistema',
-                        descripcion: 'Categorías para el módulo de gastos'
-                    });
-                }
-
-                this.categorias = categorias;
-                return;
-            } catch (e) {
-                const msg = (e && e.message) ? e.message : String(e);
-                const esEsquemaFilaUnica = msg.includes('configuracion.clave') && msg.includes('does not exist');
-                if (!esEsquemaFilaUnica) throw e;
-
-                // Fallback: esquema fila única (configuracion.datos)
-                const resAny = await window.databaseService.select('configuracion', { limite: 1, noCache: true });
-                const row0 = (resAny && resAny.success && Array.isArray(resAny.data) && resAny.data[0]) ? resAny.data[0] : null;
-                const datosActuales = row0 && typeof row0.datos === 'object' && row0.datos ? row0.datos : {};
-                const datosNuevos = { ...datosActuales, categorias_gastos: categorias };
-
-                if (row0 && row0.id != null) {
-                    await window.databaseService.update('configuracion', row0.id, {
-                        datos: datosNuevos,
-                        updated_at: new Date().toISOString()
-                    });
-                } else {
-                    await window.databaseService.insert('configuracion', {
-                        datos: datosNuevos
-                    });
-                }
-
-                this.categorias = categorias;
+            } else {
+                await window.databaseService.insert('configuracion', {
+                    id: 1,
+                    datos: datosNuevos,
+                    updated_at: new Date().toISOString()
+                });
             }
+
+            this.categorias = categorias;
         } catch (error) {
             console.error('Error guardando categorías:', error);
             alert('Error al guardar las categorías en la base de datos.');
@@ -200,7 +206,9 @@ class GestorGastos {
     }
 
     obtenerRangoFechas(periodo) {
-        const hoy = new Date();
+        // Obtener fecha actual en zona horaria de Colombia
+        const ahoraStr = new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' });
+        const hoy = new Date(ahoraStr);
         let fechaInicio, fechaFin;
 
         switch (periodo) {
@@ -334,14 +342,18 @@ class GestorGastos {
 
     actualizarHistorialGastos() {
         const tbody = document.getElementById('tablaGastosBody');
-        if (!tbody) return;
+        if (!tbody) {
+            console.warn('⚠️ No se encontró tabla de gastos (tablaGastosBody)');
+            return;
+        }
         
         const gastos = this.aplicarFiltros();
+        console.log('📋 Actualizando historial con', gastos.length, 'gastos');
         
         if (gastos.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center py-4">
+                    <td colspan="9" class="text-center py-4">
                         <i class="fas fa-inbox fa-2x text-muted mb-2"></i>
                         <p class="text-muted mb-0">No se encontraron gastos con los filtros aplicados</p>
                     </td>
@@ -356,6 +368,9 @@ class GestorGastos {
             const registradoPorStr = gasto.registradoPor 
                 ? (gasto.registradoPor === '00000000-0000-0000-0000-000000000000' ? 'Admin' : '...') 
                 : 'Sistema';
+            
+            // Obtener icono y color de método de pago
+            const metodoPagoInfo = this.obtenerMetodoPagoInfo(gasto.metodo_pago);
             
             return `
                 <tr>
@@ -373,6 +388,11 @@ class GestorGastos {
                             ${gasto.proveedor || 'No especificado'}
                         </div>
                     </td>
+                    <td>
+                        <span class="badge ${metodoPagoInfo.badgeClass}">
+                            ${metodoPagoInfo.icono} ${metodoPagoInfo.nombre}
+                        </span>
+                    </td>
                     <td class="fw-bold text-danger">${formatearMoneda(gasto.monto)}</td>
                     <td>
                         <div class="d-flex align-items-center">
@@ -382,11 +402,9 @@ class GestorGastos {
                     </td>
                     <td>
                         <div class="btn-group" role="group">
-                             <!-- 
-                             <button class="btn btn-sm btn-outline-primary" onclick="window.gestorGastos.editarGasto('${gasto.id}')" title="Editar">
+                            <button class="btn btn-sm btn-outline-primary" onclick="window.gestorGastos.editarGasto('${gasto.id}')" title="Editar">
                                 <i class="fas fa-edit"></i>
-                            </button> 
-                            -->
+                            </button>
                             <button class="btn btn-sm btn-outline-danger" onclick="window.gestorGastos.eliminarGasto('${gasto.id}')" title="Eliminar">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -432,6 +450,17 @@ class GestorGastos {
         return `<span class="badge bg-${cat.color} bg-opacity-10 text-${cat.color}">
                     <i class="${cat.icono} me-1"></i>${cat.nombre}
                 </span>`;
+    }
+
+    obtenerMetodoPagoInfo(metodoPago) {
+        const metodos = {
+            'efectivo': { nombre: 'Efectivo', icono: '💵', badgeClass: 'bg-success bg-opacity-10 text-success' },
+            'transferencia': { nombre: 'Transferencia', icono: '🏦', badgeClass: 'bg-info bg-opacity-10 text-info' },
+            'tarjeta': { nombre: 'Tarjeta', icono: '💳', badgeClass: 'bg-primary bg-opacity-10 text-primary' },
+            'cheque': { nombre: 'Cheque', icono: '📝', badgeClass: 'bg-warning bg-opacity-10 text-warning' }
+        };
+        
+        return metodos[metodoPago] || { nombre: metodoPago || 'No especificado', icono: '❓', badgeClass: 'bg-secondary bg-opacity-10 text-secondary' };
     }
 
     actualizarInfoPaginacion(total) {
@@ -598,10 +627,25 @@ class GestorGastos {
     }
 
     configurarFormularioRegistro() {
+        console.log('⚙️ Configurando formulario de registro...');
         const btnRegistrar = document.getElementById('btnRegistrarGasto');
         if (btnRegistrar) {
+            console.log('✅ Botón registrar encontrado, agregando event listener');
             btnRegistrar.addEventListener('click', () => {
+                console.log('🖱️ Click en botón Registrar Gasto detectado');
                 this.registrarGasto();
+            });
+        } else {
+            console.error('❌ No se encontró el botón btnRegistrarGasto');
+        }
+        
+        // Configurar botón cancelar
+        const btnCancelar = document.getElementById('btnCancelarEdicion');
+        if (btnCancelar) {
+            console.log('✅ Botón cancelar encontrado, agregando event listener');
+            btnCancelar.addEventListener('click', () => {
+                console.log('🖱️ Click en botón Cancelar detectado');
+                this.cancelarEdicion();
             });
         }
     }
@@ -716,6 +760,10 @@ class GestorGastos {
         const descripcion = document.getElementById('descripcionGasto').value.trim();
         const proveedor = document.getElementById('proveedorGasto').value.trim();
         const monto = parseFloat(document.getElementById('montoGasto').value);
+        const metodoPago = document.getElementById('metodoPagoGasto').value;
+
+        const esEdicion = this.gastoEnEdicion !== null;
+        console.log(esEdicion ? '✏️ Intentando actualizar gasto:' : '📝 Intentando registrar gasto:', { fecha, categoria, descripcion, monto, metodoPago });
 
         if (!fecha) return alert('Por favor selecciona una fecha');
         if (!descripcion) return alert('Por favor ingresa una descripción');
@@ -725,7 +773,7 @@ class GestorGastos {
         const usuario = window.sessionManager ? window.sessionManager.getCurrentUser() : null;
         const usuarioId = usuario ? usuario.id : null;
 
-        const nuevoGasto = {
+        const datosGasto = {
             fecha_gasto: fecha,
             categoria: categoria,
             concepto: descripcion.substring(0, 200),
@@ -734,7 +782,7 @@ class GestorGastos {
             monto: monto,
             usuario_id: usuarioId,
             estado: 'aprobado',
-            metodo_pago: 'efectivo'
+            metodo_pago: metodoPago
         };
 
         try {
@@ -744,15 +792,36 @@ class GestorGastos {
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
             }
 
-            const resultado = await window.databaseService.insert('gastos', nuevoGasto);
+            let resultado;
+            if (esEdicion) {
+                console.log('💾 Actualizando gasto en BD...', this.gastoEnEdicion);
+                resultado = await window.databaseService.update('gastos', this.gastoEnEdicion, datosGasto);
+                console.log('📤 Resultado de actualización:', resultado);
+            } else {
+                console.log('💾 Insertando gasto en BD...');
+                resultado = await window.databaseService.insert('gastos', datosGasto);
+                console.log('📤 Resultado de inserción:', resultado);
+            }
             
             if (resultado.success) {
-                alert('Gasto registrado exitosamente');
-                this.limpiarFormulario();
+                console.log(esEdicion ? '✅ Gasto actualizado correctamente' : '✅ Gasto insertado correctamente. ID:', resultado.data?.[0]?.id);
+                alert(esEdicion ? 'Gasto actualizado exitosamente' : 'Gasto registrado exitosamente');
+                
+                // Cancelar modo edición
+                this.cancelarEdicion();
+                
+                // Recargar gastos desde BD
+                console.log('🔄 Recargando gastos...');
                 await this.cargarGastos();
+                
+                // Actualizar vista
+                console.log('🎨 Actualizando vista...');
                 this.actualizarVista();
+                
+                console.log('✅ Vista actualizada. Total gastos:', this.gastos.length);
             } else {
-                alert('Error al guardar el gasto');
+                console.error('❌ Error en resultado:', resultado);
+                alert('Error al guardar el gasto: ' + (resultado.error?.message || 'Error desconocido'));
             }
             
             if (btn) {
@@ -760,7 +829,7 @@ class GestorGastos {
                 btn.innerHTML = '<i class="fas fa-save me-2"></i>Registrar Gasto';
             }
         } catch (error) {
-            console.error(error);
+            console.error('❌ Error al registrar gasto:', error);
             alert('Error al registrar el gasto: ' + error.message);
             const btn = document.getElementById('btnRegistrarGasto');
             if(btn) {
@@ -771,6 +840,7 @@ class GestorGastos {
     }
 
     limpiarFormulario() {
+        this.gastoEnEdicion = null;
         this.inicializarFechaFormulario();
         const categoria = document.getElementById('categoriaGasto');
         if (categoria && categoria.length > 0) categoria.selectedIndex = 0;
@@ -779,12 +849,94 @@ class GestorGastos {
         document.getElementById('proveedorGasto').value = '';
         document.getElementById('montoGasto').value = '';
         document.getElementById('comprobanteGasto').value = '';
+        
+        // Resetear método de pago a efectivo
+        const metodoPago = document.getElementById('metodoPagoGasto');
+        if (metodoPago) metodoPago.selectedIndex = 0;
+        
+        // Restaurar botón a estado normal
+        const btn = document.getElementById('btnRegistrarGasto');
+        const btnCancelar = document.getElementById('btnCancelarEdicion');
+        
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-save me-2"></i>Registrar Gasto';
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-primary-custom');
+        }
+        
+        if (btnCancelar) {
+            btnCancelar.style.display = 'none';
+        }
     }
 
     inicializarFechaFormulario() {
-        const fechaHoy = new Date().toISOString().split('T')[0];
+        const fechaHoy = obtenerFechaColombiaHoy();
         const el = document.getElementById('fechaGasto');
-        if(el) el.value = fechaHoy;
+        if(el) {
+            el.value = fechaHoy;
+            console.log('📅 Fecha inicial establecida (Colombia):', fechaHoy);
+        }
+    }
+
+    editarGasto(gastoId) {
+        console.log('✏️ Editando gasto:', gastoId);
+        const gasto = this.gastos.find(g => g.id === gastoId);
+        
+        if (!gasto) {
+            console.error('❌ Gasto no encontrado:', gastoId);
+            return alert('Gasto no encontrado');
+        }
+
+        // Rellenar el formulario con los datos del gasto
+        document.getElementById('fechaGasto').value = gasto.fecha_gasto;
+        document.getElementById('categoriaGasto').value = gasto.categoria;
+        document.getElementById('descripcionGasto').value = gasto.descripcion || gasto.concepto;
+        document.getElementById('proveedorGasto').value = gasto.proveedor || '';
+        document.getElementById('montoGasto').value = gasto.monto;
+        
+        // Establecer método de pago
+        const metodoPago = document.getElementById('metodoPagoGasto');
+        if (metodoPago && gasto.metodo_pago) {
+            metodoPago.value = gasto.metodo_pago;
+        }
+
+        // Guardar el ID del gasto en edición
+        this.gastoEnEdicion = gastoId;
+
+        // Cambiar el texto del botón
+        const btn = document.getElementById('btnRegistrarGasto');
+        const btnCancelar = document.getElementById('btnCancelarEdicion');
+        
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-save me-2"></i>Actualizar Gasto';
+            btn.classList.remove('btn-primary-custom');
+            btn.classList.add('btn-warning');
+        }
+        
+        if (btnCancelar) {
+            btnCancelar.style.display = 'block';
+        }
+
+        // Scroll al formulario
+        document.querySelector('.form-container').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    cancelarEdicion() {
+        this.gastoEnEdicion = null;
+        this.limpiarFormulario();
+        
+        const btn = document.getElementById('btnRegistrarGasto');
+        const btnCancelar = document.getElementById('btnCancelarEdicion');
+        
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-save me-2"></i>Registrar Gasto';
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-primary-custom');
+        }
+        
+        if (btnCancelar) {
+            btnCancelar.style.display = 'none';
+        }
     }
 
     async eliminarGasto(gastoId) {
