@@ -579,18 +579,6 @@ class GestorSalas {
             console.log('🔍 Ventana vuelve a tener foco, verificando datos...');
             this.verificarIntegridadDatos();
         });
-
-        // Fallback global para botón Tienda (evitar fallos de binding en producción)
-        if (!window.__tiendaClickFallback) {
-            window.__tiendaClickFallback = true;
-            document.addEventListener('click', (e) => {
-                const btn = e.target.closest('#btnTienda');
-                if (btn && window.gestorSalas?.abrirTienda) {
-                    e.preventDefault();
-                    window.gestorSalas.abrirTienda();
-                }
-            });
-        }
     }
 
     recargarConfiguracion() {
@@ -2748,12 +2736,6 @@ class GestorSalas {
             btnTarifas.addEventListener('click', () => this.mostrarModalTarifas());
         }
 
-        // Botón TIENDA (venta directa de productos)
-        const btnTienda = document.getElementById('btnTienda');
-        if (btnTienda) {
-            btnTienda.addEventListener('click', () => this.abrirTienda());
-        }
-
         // Manejar el evento show.bs.modal para el modal de nueva sala
         const modalNuevaSala = document.getElementById('modalNuevaSala');
         if (modalNuevaSala) {
@@ -4473,7 +4455,7 @@ class GestorSalas {
                             .store-modal .qty-btn:hover { background: #2da16d; color: #fff; }
                             .store-modal .qty-val { font-weight: 600; font-size: 0.9rem; border: none; background: transparent; width: 30px; text-align: center; }
                             .store-modal .modal-footer { background: #fff; border-top: 1px solid #e5e7eb; padding: 16px 20px; }
-                            @media (max-width: 600px) { .store-modal .product-grid { grid-template-columns: repeat(2, 1fr); } }
+                            @media (max-width: 768px) { .store-modal .product-grid { grid-template-columns: repeat(3, 1fr); } }
                         </style>
 
                         <!-- Header estilo corporativo -->
@@ -4531,13 +4513,25 @@ class GestorSalas {
             </div>
         `;
 
+        // Eliminar modales anteriores
+        const modalAnterior = document.getElementById('modalTienda');
+        if (modalAnterior) {
+            const instanciaAnterior = bootstrap.Modal.getInstance(modalAnterior);
+            if (instanciaAnterior) {
+                instanciaAnterior.hide();
+            }
+            modalAnterior.remove();
+        }
+        document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+
         const modalWrapper = document.createElement('div');
         modalWrapper.innerHTML = modalHtml;
         document.body.appendChild(modalWrapper);
 
         this.cargarProductosEnModalTienda();
 
-        const modal = new bootstrap.Modal(document.getElementById('modalTienda'));
+        const modalEl = document.getElementById('modalTienda');
+        const modal = new bootstrap.Modal(modalEl);
         modal.show();
 
         const btnContinuar = document.getElementById('btnContinuarPagoTienda');
@@ -4545,9 +4539,21 @@ class GestorSalas {
             btnContinuar.addEventListener('click', () => this.mostrarModalPagoTienda());
         }
 
-        document.getElementById('modalTienda').addEventListener('hidden.bs.modal', function () {
-            this.remove();
-        });
+        if (modalEl) {
+            // Forzar cierre con un solo click en botones de cerrar
+            modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) inst.hide();
+                });
+            });
+
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                this.remove();
+                document.body.classList.remove('modal-open');
+                document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+            });
+        }
     }
 
     cargarProductosEnModalTienda() {
@@ -4641,15 +4647,15 @@ class GestorSalas {
                             <div class="price">${formatearMoneda(producto.precio)}</div>
                             <div class="${stockClass}">Stock: ${producto.stock}</div>
                             <div class="qty-control">
-                                <button class="qty-btn" onclick="this.nextElementSibling.stepDown(); window.gestorSalas.actualizarTotalProductosTienda()">-</button>
+                                <button class="qty-btn" type="button" onclick="let inp=this.nextElementSibling; let v=parseInt(inp.value)||0; if(v>0){inp.value=v-1; window.gestorSalas.actualizarTotalProductosTienda();}">-</button>
                                 <input type="number" class="qty-val" min="0" max="${producto.stock}" value="0"
                                        data-producto-id="${producto.id}"
                                        data-precio="${producto.precio}"
                                        data-nombre="${producto.nombre}"
                                        data-stock="${producto.stock}"
                                        onchange="window.gestorSalas.actualizarTotalProductosTienda()"
-                                       oninput="window.gestorSalas.validarCantidadProducto(this)">
-                                <button class="qty-btn" onclick="this.previousElementSibling.stepUp(); window.gestorSalas.actualizarTotalProductosTienda()">+</button>
+                                       oninput="window.gestorSalas.validarCantidadProducto(this); window.gestorSalas.actualizarTotalProductosTienda()">
+                                <button class="qty-btn" type="button" onclick="let inp=this.previousElementSibling; let v=parseInt(inp.value)||0; let max=parseInt(inp.max)||999; if(v<max){inp.value=v+1; window.gestorSalas.actualizarTotalProductosTienda();}">+</button>
                             </div>
                         </div>
                     `;
