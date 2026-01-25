@@ -394,20 +394,47 @@ async function guardarVentaContableDesdeSesion(sesion) {
         let montoTarjeta = null;
         let montoDigital = null;
         
-        if (metodoPago === 'parcial' && sesion.notas) {
-            // Parsear [PAGO_PARCIAL] efectivo:5000 transferencia:3000
-            const match = sesion.notas.match(/\[PAGO_PARCIAL\]([^\n]+)/);
-            if (match) {
-                const detalles = match[1];
-                const efectivoMatch = detalles.match(/efectivo:(\d+)/);
-                const transferenciaMatch = detalles.match(/transferencia:(\d+)/);
-                const tarjetaMatch = detalles.match(/tarjeta:(\d+)/);
-                const digitalMatch = detalles.match(/digital:(\d+)/);
-                
-                if (efectivoMatch) montoEfectivo = Number(efectivoMatch[1]);
-                if (transferenciaMatch) montoTransferencia = Number(transferenciaMatch[1]);
-                if (tarjetaMatch) montoTarjeta = Number(tarjetaMatch[1]);
-                if (digitalMatch) montoDigital = Number(digitalMatch[1]);
+        // Primero intentar obtener de los campos directos de la sesión
+        if (metodoPago === 'parcial') {
+            montoEfectivo = sesion.monto_efectivo || null;
+            montoTransferencia = sesion.monto_transferencia || null;
+            montoTarjeta = sesion.monto_tarjeta || null;
+            montoDigital = sesion.monto_digital || null;
+            
+            // Si no están en los campos directos, intentar parsear de las notas
+            if (!montoEfectivo && !montoTransferencia && !montoTarjeta && !montoDigital && sesion.notas) {
+                const match = sesion.notas.match(/\[PAGO_PARCIAL\]([^\n]+)/);
+                if (match) {
+                    const detalles = match[1];
+                    const efectivoMatch = detalles.match(/efectivo:(\d+)/);
+                    const transferenciaMatch = detalles.match(/transferencia:(\d+)/);
+                    const tarjetaMatch = detalles.match(/tarjeta:(\d+)/);
+                    const digitalMatch = detalles.match(/digital:(\d+)/);
+                    
+                    if (efectivoMatch) montoEfectivo = Number(efectivoMatch[1]);
+                    if (transferenciaMatch) montoTransferencia = Number(transferenciaMatch[1]);
+                    if (tarjetaMatch) montoTarjeta = Number(tarjetaMatch[1]);
+                    if (digitalMatch) montoDigital = Number(digitalMatch[1]);
+                }
+            }
+        } else {
+            // Si NO es pago parcial, asignar el total al método específico
+            const totalVenta = Number(sesion.totalGeneral ?? sesion.total_general ?? 0);
+            if (totalVenta > 0) {
+                switch(metodoPago) {
+                    case 'efectivo':
+                        montoEfectivo = totalVenta;
+                        break;
+                    case 'tarjeta':
+                        montoTarjeta = totalVenta;
+                        break;
+                    case 'transferencia':
+                        montoTransferencia = totalVenta;
+                        break;
+                    case 'digital':
+                        montoDigital = totalVenta;
+                        break;
+                }
             }
         }
 
@@ -2214,7 +2241,7 @@ class GestorSalas {
 
         // Modal de finalización de sesión optimizado para móvil
         const modalHtml = `
-            <div class="modal fade" id="modalFinalizarSesion" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal fade" id="modalFinalizarSesion" tabindex="-1" data-bs-backdrop="static" data-total-productos="${totalProductos}">
                 <div class="modal-dialog modal-dialog-centered modal-md">
                     <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
                         
@@ -2238,10 +2265,45 @@ class GestorSalas {
                             <!-- Total Principal -->
                             <div class="bg-white p-3 text-center border-bottom">
                                 <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">Total a Pagar</small>
-                                <h2 class="mb-0 text-primary fw-bold mt-1">${formatearMoneda(totalGeneral)}</h2>
+                                <h2 class="mb-0 text-primary fw-bold mt-1" id="totalAPagar">${formatearMoneda(totalGeneral)}</h2>
                             </div>
 
                             <div class="p-3">
+                                ${esLibre ? `
+                                <!-- Ajuste Manual de Tiempo Libre -->
+                                <div class="alert alert-info border-0 shadow-sm mb-3 animate__animated animate__fadeIn">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong class="small">Tiempo Libre - Ajuste Manual</strong>
+                                    </div>
+                                    <div class="small mb-2">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="text-muted">Tiempo transcurrido:</span>
+                                            <strong>${Math.floor(duracionTotal / 60)}h ${duracionTotal % 60}m</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span class="text-muted">Consumo calculado:</span>
+                                            <strong class="text-primary">${formatearMoneda(tarifaTiempoBase)}</strong>
+                                        </div>
+                                    </div>
+                                    <label class="form-label small fw-bold mb-1">Ingrese el monto a cobrar:</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-primary text-white"><i class="fas fa-dollar-sign"></i></span>
+                                        <input type="number" 
+                                               class="form-control form-control-lg fw-bold" 
+                                               id="montoTiempoLibre" 
+                                               value="${tarifaTiempoBase}"
+                                               min="0"
+                                               step="1000"
+                                               inputmode="numeric"
+                                               placeholder="Ingrese el monto">
+                                    </div>
+                                    <small class="text-muted d-block mt-1">
+                                        <i class="fas fa-lightbulb"></i> Ajuste el monto según el tiempo real jugado
+                                    </small>
+                                </div>
+                                ` : ''}
+                                
                                 <!-- Info Resumida -->
                                 <div class="card border-0 shadow-sm mb-3 rounded-3">
                                     <div class="card-body p-2">
@@ -2458,6 +2520,8 @@ class GestorSalas {
         const montoTransfer = document.getElementById('montoTransferParcial');
         const restanteEl = document.getElementById('pagoParcialRestante');
         const errorEl = document.getElementById('pagoParcialError');
+        const montoTiempoLibre = document.getElementById('montoTiempoLibre');
+        const totalAPagar = document.getElementById('totalAPagar');
         
         const parseMonto = (v) => {
             const n = Number(v);
@@ -2485,6 +2549,28 @@ class GestorSalas {
                 errorEl.classList.toggle('d-none', restante === 0);
             }
         };
+        
+        // Actualizar total cuando cambia el monto de tiempo libre
+        if (montoTiempoLibre) {
+            // Guardar el total de productos como atributo data
+            const modalElement = document.getElementById('modalFinalizarSesion');
+            const totalProductosData = modalElement?.dataset?.totalProductos || 0;
+            
+            montoTiempoLibre.addEventListener('input', function() {
+                const nuevoMontoTiempo = parseMonto(this.value);
+                const totalProds = parseMonto(totalProductosData);
+                const nuevoTotalGeneral = nuevoMontoTiempo + totalProds;
+                
+                if (totalAPagar) {
+                    totalAPagar.textContent = formatearMoneda(nuevoTotalGeneral);
+                }
+                // Actualizar el dataset del pago parcial también
+                if (pagoParcialContainer) {
+                    pagoParcialContainer.dataset.total = nuevoTotalGeneral;
+                    actualizarParcialUI();
+                }
+            });
+        }
 
         radiosPago.forEach(radio => {
             radio.addEventListener('change', function() {
@@ -2569,9 +2655,18 @@ class GestorSalas {
             const linea = `[PAGO_PARCIAL] efectivo:${efectivo} transferencia:${transferencia}`;
             this.sesiones[sesionIndex].notas = (sinMarcadorParcial ? `${sinMarcadorParcial}\n` : '') + linea;
             
-            // Guardar montos directamente en la sesión
-            this.sesiones[sesionIndex].monto_efectivo = efectivo;
-            this.sesiones[sesionIndex].monto_transferencia = transferencia;
+            // Guardar montos directamente en la sesión (IMPORTANTE para reportes)
+            this.sesiones[sesionIndex].monto_efectivo = efectivo > 0 ? efectivo : null;
+            this.sesiones[sesionIndex].monto_transferencia = transferencia > 0 ? transferencia : null;
+            this.sesiones[sesionIndex].monto_tarjeta = null;
+            this.sesiones[sesionIndex].monto_digital = null;
+        } else {
+            // Para pagos simples, limpiar los campos parciales y asignar al método correspondiente
+            const totalPago = this.sesiones[sesionIndex].totalGeneral || 0;
+            this.sesiones[sesionIndex].monto_efectivo = metodoPagoSeleccionado === 'efectivo' && totalPago > 0 ? totalPago : null;
+            this.sesiones[sesionIndex].monto_tarjeta = metodoPagoSeleccionado === 'tarjeta' && totalPago > 0 ? totalPago : null;
+            this.sesiones[sesionIndex].monto_transferencia = metodoPagoSeleccionado === 'transferencia' && totalPago > 0 ? totalPago : null;
+            this.sesiones[sesionIndex].monto_digital = (metodoPagoSeleccionado === 'qr' || metodoPagoSeleccionado === 'digital') && totalPago > 0 ? totalPago : null;
         }
 
         this.sesiones[sesionIndex].metodoPago = metodoPago;
@@ -2593,7 +2688,20 @@ class GestorSalas {
 
         const esLibre = this.esSesionTiempoLibre(sesion);
         let tarifaTiempoBase = (sesion.tarifa_base || sesion.tarifa || 0);
+        
         if (esLibre) {
+            // Para tiempo libre, usar el monto manual ingresado
+            const montoManual = document.getElementById('montoTiempoLibre');
+            if (montoManual && montoManual.value) {
+                tarifaTiempoBase = Math.max(0, Math.round(Number(montoManual.value) || 0));
+            } else {
+                // Fallback: calcular automáticamente si no hay input manual
+                const ahora = new Date();
+                const inicio = new Date(sesion.fecha_inicio);
+                const duracionMin = Math.max(1, Math.ceil((ahora - inicio) / (1000 * 60)));
+                tarifaTiempoBase = this.calcularTarifaTiempoLibre(sesion.salaId || sesion.sala_id, duracionMin);
+            }
+            
             const ahora = new Date();
             const inicio = new Date(sesion.fecha_inicio);
             const duracionMin = Math.max(1, Math.ceil((ahora - inicio) / (1000 * 60)));
@@ -2601,7 +2709,6 @@ class GestorSalas {
             sesion.tiempoOriginal = minutosFacturados;
             sesion.tiempo = minutosFacturados;
             sesion.tiempo_contratado = minutosFacturados;
-            tarifaTiempoBase = this.calcularTarifaTiempoLibre(sesion.salaId || sesion.sala_id, duracionMin);
 
             // Asegurar que la nota conserve el marcador (sin duplicarlo)
             const notaUsuario = this.extraerNotaUsuarioTiempoLibre(sesion.notas);

@@ -8,116 +8,425 @@
   <meta http-equiv="Expires" content="0" />
   <title>Iniciar sesión - GameControl</title>
 
-  <!-- CSS base -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Fuentes estilo Gamer/Futurista -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Iconos -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="css/styles.css">
-  <link rel="stylesheet" href="css/corporate-theme.css">
 
   <style>
-    /* Ensure dark background overrides corporate theme */
-    body.corporate, body { background: #0f172a !important; min-height: 100vh; display: grid; place-items: center; }
-    .login-card {
-      width: 100%; max-width: 420px; background: #0b1325; border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 16px; padding: 28px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
-      color: #e5e7eb;
+    :root {
+      --gamer-yellow: #FFD600;
+      --gamer-yellow-dim: #cca300;
+      --dark-bg: #121212;
+      --panel-bg: rgba(0, 0, 0, 0.85);
+      --text-color: #ffffff;
+      --input-bg: #1e1e1e;
     }
-    .login-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .login-logo i { color: #4a90e2; font-size: 1.4rem; }
-    .login-title { margin: 0; font-weight: 700; color: #fff; }
-    .muted { color: #94a3b8; }
-    /* Inputs claros con texto negro para facilitar el llenado */
-    .form-control { background: #ffffff; border: 1px solid rgba(0,0,0,0.15); color: #111827; }
-    .form-control:focus { border-color: #4a90e2; box-shadow: 0 0 0 0.2rem rgba(74,144,226,0.15); background: #ffffff; color: #111827; }
-    .form-control::placeholder { color: #6b7280; opacity: 1; }
-    .input-group-text { background: #f8fafc; color: #334155; border: 1px solid rgba(0,0,0,0.15); }
-    .form-label { color: #e2e8f0; font-weight: 500; margin-bottom: 0.5rem; }
-    /* Forzar estilo cuando el navegador autocompleta */
-    input.form-control:-webkit-autofill,
-    input.form-control:-webkit-autofill:hover,
-    input.form-control:-webkit-autofill:focus {
-      -webkit-text-fill-color: #111827;
-      box-shadow: 0 0 0px 1000px #ffffff inset;
-      -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      background-color: #1a1a1a;
+      position: relative;
+    }
+
+    /* FONDO ESTILO GAMER AMARILLO */
+    .background-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background: radial-gradient(circle at 50% 50%, #FFD600 0%, #bd9b00 20%, #1a1a1a 70%);
+    }
+
+    .background-grid {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(rgba(18, 18, 18, 0.3) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(18, 18, 18, 0.3) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.6;
+    }
+
+    .particle {
+      position: absolute;
+      background: var(--gamer-yellow);
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--gamer-yellow);
+      animation: float 10s infinite linear;
+      opacity: 0.7;
+    }
+    
+    .particle:nth-child(1) { left: 10%; top: 90%; animation-duration: 15s; width: 8px; height: 8px; }
+    .particle:nth-child(2) { left: 80%; top: 80%; animation-duration: 12s; }
+    .particle:nth-child(3) { left: 40%; top: 95%; animation-duration: 18s; width: 6px; height: 6px; }
+    .particle:nth-child(4) { left: 70%; top: 20%; animation-duration: 20s; }
+
+    @keyframes float {
+      0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+      20% { opacity: 0.8; }
+      100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* CONTENEDOR DEL LOGIN */
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      padding: 40px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 214, 0, 0.3);
+      box-shadow: 0 0 30px rgba(255, 214, 0, 0.15);
+      text-align: center;
+      position: relative;
+      transform: translateY(0);
+      animation: slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .login-card::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60%;
+      height: 4px;
+      background: var(--gamer-yellow);
+      box-shadow: 0 0 15px var(--gamer-yellow);
+      border-radius: 2px;
+    }
+
+    /* LOGO */
+    .logo-area {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 20px auto;
+      background: rgba(255, 214, 0, 0.1);
+      border: 2px solid var(--gamer-yellow);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      color: var(--gamer-yellow);
+      box-shadow: 0 0 20px rgba(255, 214, 0, 0.2);
+    }
+
+    h2 {
+      font-family: 'Orbitron', sans-serif;
+      color: white;
+      margin-bottom: 10px;
+      font-size: 1.8rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    h2 span {
+      color: var(--gamer-yellow);
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 0.95rem;
+      margin-bottom: 30px;
+    }
+
+    /* ALERTAS */
+    #alertContainer {
+      margin-bottom: 20px;
+    }
+
+    .alert {
+      background: rgba(220, 53, 69, 0.2);
+      border: 1px solid rgba(220, 53, 69, 0.5);
+      color: #ff6b6b;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+
+    /* FORMULARIO */
+    .input-group-custom {
+      position: relative;
+      margin-bottom: 25px;
+      text-align: left;
+    }
+
+    .input-group-custom label {
+      display: block;
+      color: #aaa;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-wrapper i {
+      position: absolute;
+      left: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--gamer-yellow);
+      font-size: 1.1rem;
+      transition: 0.3s;
+      z-index: 2;
+    }
+
+    .input-wrapper input {
+      width: 100%;
+      padding: 14px 45px 14px 45px;
+      background: var(--input-bg);
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: white;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 500;
+      outline: none;
+      transition: 0.3s;
+    }
+
+    .input-wrapper input::placeholder {
+      color: #666;
+    }
+
+    .input-wrapper input:focus {
+      border-color: var(--gamer-yellow);
+      box-shadow: 0 0 10px rgba(255, 214, 0, 0.2);
+    }
+
+    .toggle-password {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      z-index: 2;
+      font-size: 1rem;
+      transition: 0.3s;
+    }
+
+    .toggle-password:hover {
+      color: var(--gamer-yellow);
+    }
+
+    /* Autofill fix */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover, 
+    input:-webkit-autofill:focus, 
+    input:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 30px var(--input-bg) inset !important;
+      -webkit-text-fill-color: white !important;
       transition: background-color 5000s ease-in-out 0s;
     }
-    .btn-primary { background: #4a90e2; border-color: #4a90e2; padding: 12px; font-weight: 600; }
-    .btn-primary:hover { background: #3c7dc7; border-color: #3c7dc7; }
-    .brand-footer { color: #64748b; font-size: 0.85rem; }
-    .user-avatar { background: #4a90e2; color: #fff; }
 
-    /* Mobile Responsiveness */
+    /* OPCIONES */
+    .options-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #aaa;
+    }
+
+    .checkbox-wrapper input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--gamer-yellow);
+      cursor: pointer;
+    }
+
+    .forgot-link {
+      color: var(--gamer-yellow);
+      text-decoration: none;
+      transition: 0.3s;
+      font-size: 0.9rem;
+    }
+
+    .forgot-link:hover {
+      text-shadow: 0 0 5px var(--gamer-yellow);
+      color: #fff;
+    }
+
+    /* BOTÓN */
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      background: var(--gamer-yellow);
+      color: #000;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: 0.3s;
+      position: relative;
+      overflow: hidden;
+      clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+
+    .btn-login:hover {
+      background: #fff;
+      box-shadow: 0 0 20px var(--gamer-yellow);
+      transform: scale(1.02);
+    }
+
+    .btn-login:active {
+      transform: scale(0.98);
+    }
+
+    .btn-login i {
+      margin-right: 8px;
+    }
+
+    /* Footer */
+    .brand-footer {
+      margin-top: 25px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    .brand-footer i {
+      color: var(--gamer-yellow);
+      margin-right: 5px;
+    }
+
+    /* Responsive */
     @media (max-width: 576px) {
-      body { align-items: flex-start; padding-top: 2rem; }
+      body { padding: 20px; }
       .login-card {
-        border: none;
-        background: transparent;
-        box-shadow: none;
-        padding: 1rem;
+        max-width: 100%;
+        padding: 30px 20px;
       }
-      .login-logo { justify-content: center; margin-bottom: 1.5rem; }
-      .login-logo i { font-size: 2rem; }
-      .login-title { font-size: 1.75rem; }
-      .form-control, .btn-primary { height: 50px; }
+      .logo-area {
+        width: 70px;
+        height: 70px;
+        font-size: 2rem;
+      }
+      h2 {
+        font-size: 1.5rem;
+      }
     }
   </style>
 </head>
-<body class="corporate">
-  <div class="login-card">
-    <div class="text-center mb-3">
-      <div class="login-logo">
-        <i class="fas fa-gamepad"></i>
-        <h4 class="login-title">GameControl</h4>
-      </div>
-      <p class="muted">Accede a tu panel de gestión</p>
-    </div>
+<body>
+  <!-- Fondo Animado -->
+  <div class="background-wrapper">
+    <div class="background-grid"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
 
-    <div id="alertContainer" class="mb-3"></div>
+  <!-- Tarjeta de Login -->
+  <div class="login-card">
+    <div class="logo-area">
+      <i class="fas fa-gamepad"></i>
+    </div>
+    
+    <h2>Game<span>Control</span></h2>
+    <p class="subtitle">Accede a tu panel de gestión</p>
+
+    <div id="alertContainer"></div>
 
     <form id="loginForm" autocomplete="on">
-      <div class="mb-3">
-        <label for="email" class="form-label">Correo electrónico</label>
-        <div class="input-group">
-          <span class="input-group-text"><i class="fas fa-at"></i></span>
-          <input type="email" class="form-control" id="email" placeholder="tucorreo@dominio.com" required autocomplete="email" />
+      <div class="input-group-custom">
+        <label for="email">Correo electrónico</label>
+        <div class="input-wrapper">
+          <i class="fas fa-envelope"></i>
+          <input type="email" id="email" placeholder="ejemplo@correo.com" required autocomplete="email" />
         </div>
       </div>
 
-      <div class="mb-2">
-        <label for="password" class="form-label">Contraseña</label>
-        <div class="input-group">
-          <span class="input-group-text"><i class="fas fa-lock"></i></span>
-          <input type="password" class="form-control" id="password" placeholder="••••••••" required autocomplete="current-password" />
-          <button type="button" class="input-group-text toggle-password" title="Mostrar/ocultar">
+      <div class="input-group-custom">
+        <label for="password">Contraseña</label>
+        <div class="input-wrapper">
+          <i class="fas fa-key"></i>
+          <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password" />
+          <button type="button" class="toggle-password" title="Mostrar/ocultar">
             <i class="fas fa-eye"></i>
           </button>
         </div>
       </div>
 
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" id="remember" checked>
-          <label class="form-check-label muted" for="remember">Mantener sesión</label>
-        </div>
-        <a class="small text-decoration-none" href="#" onclick="alert('Contacta al administrador para restablecer tu contraseña.'); return false;">¿Olvidaste tu contraseña?</a>
+      <div class="options-row">
+        <label class="checkbox-wrapper">
+          <input type="checkbox" id="remember" checked>
+          <span>Mantener sesión</span>
+        </label>
+        <a href="#" class="forgot-link" onclick="alert('Contacta al administrador para restablecer tu contraseña.'); return false;">¿Olvidaste tu contraseña?</a>
       </div>
 
-      <button type="submit" class="btn btn-primary w-100">
-        <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+      <button type="submit" class="btn-login">
+        <i class="fas fa-sign-in-alt"></i>Iniciar Sesión
       </button>
     </form>
 
-    <div class="mt-4" id="systemInfo"></div>
+    <div id="systemInfo" style="margin-top: 20px;"></div>
 
-    <div class="text-center mt-3 brand-footer">
-      <small>
-        <i class="fas fa-shield-alt me-1"></i>Conexión Segura
-      </small>
+    <div class="text-center brand-footer">
+      <i class="fas fa-shield-alt"></i>Conexión Segura
     </div>
   </div>
 
-  <!-- Dependencias -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" defer></script>
+  <!-- Script Toggle Password -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const toggleBtn = document.querySelector('.toggle-password');
+      const passwordInput = document.getElementById('password');
+      
+      if (toggleBtn && passwordInput) {
+        toggleBtn.addEventListener('click', function() {
+          const type = passwordInput.type === 'password' ? 'text' : 'password';
+          passwordInput.type = type;
+          const icon = this.querySelector('i');
+          icon.classList.toggle('fa-eye');
+          icon.classList.toggle('fa-eye-slash');
+        });
+      }
+    });
+  </script>
 
   <!-- Supabase primero -->
   <script>

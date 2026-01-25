@@ -197,22 +197,24 @@ async function inicializarConfiguracionDefault(configDefault) {
 // SISTEMA DE NOTIFICACIONES
 // ===================================================================
 
-function mostrarNotificacion(mensaje, tipo = 'success') {
-    const contenedor = document.createElement('div');
-    contenedor.className = `alert alert-${tipo} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
-    contenedor.style.zIndex = '9999';
-    contenedor.innerHTML = `
-        <i class="fas ${tipo === 'success' ? 'fa-check-circle' : tipo === 'error' ? 'fa-exclamation-triangle' : 'fa-info-circle'} me-2"></i>
-        ${mensaje}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    document.body.appendChild(contenedor);
-    
+function mostrarNotificacion(mensaje, tipo = 'success', titulo = 'Sistema') {
+    const normalizarTipo = (valor) => (valor === 'error' ? 'danger' : valor);
+    const tipoNormalizado = normalizarTipo(tipo);
+    const enviar = () => window.notificationSystem && typeof window.notificationSystem.addNotification === 'function';
+
+    if (enviar()) {
+        window.notificationSystem.addNotification(tipoNormalizado, titulo, mensaje);
+        return;
+    }
+
+    // Reintento corto por si el sistema de notificaciones aún no está listo
     setTimeout(() => {
-        if (contenedor.parentNode) {
-        contenedor.remove();
+        if (enviar()) {
+            window.notificationSystem.addNotification(tipoNormalizado, titulo, mensaje);
+        } else {
+            console.log(`[${tipoNormalizado.toUpperCase()}] ${titulo}: ${mensaje}`);
         }
-    }, 5000);
+    }, 300);
 }
 
 // ===================================================================

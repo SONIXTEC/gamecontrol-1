@@ -175,164 +175,6 @@ class GestorVentas {
                     this.sesiones = [];
                 }
 
-                // 3. Cargar ventas contables (incluye ventas sin sesión: tienda)
-                try {
-                    let resVentas = await window.databaseService.select('vista_ventas', {
-                        ordenPor: { campo: 'fecha_cierre', direccion: 'desc' },
-                        limite: 200,
-                        noCache: true
-                    });
-
-                    if (!resVentas?.success) {
-                        resVentas = await window.databaseService.select('ventas', {
-                            ordenPor: { campo: 'fecha_cierre', direccion: 'desc' },
-                            limite: 200,
-                            noCache: true
-                        });
-                    }
-
-                    if (resVentas && resVentas.success && Array.isArray(resVentas.data)) {
-                        const ventasRows = resVentas.data;
-                        const mapaSesiones = new Map(this.sesiones.map(s => [s.id, s]));
-                        const idsExistentes = new Set(this.sesiones.map(s => s.id));
-
-                        ventasRows.forEach(row => {
-                            const metodoPagoRaw = row.metodo_pago || 'efectivo';
-                            const metodoPago = metodoPagoRaw === 'digital' ? 'qr' : metodoPagoRaw;
-
-                            if (row.sesion_id && mapaSesiones.has(row.sesion_id)) {
-                                const sesion = mapaSesiones.get(row.sesion_id);
-                                sesion.ventaId = row.id;
-                                sesion.metodoPago = metodoPago;
-                                sesion.totalGeneral = Number(row.total || sesion.totalGeneral || 0);
-                                sesion.totalProductos = Number(row.subtotal_productos || sesion.totalProductos || 0);
-                                sesion.descuento = Number(row.descuento || sesion.descuento || 0);
-                                sesion.fecha_fin = row.fecha_cierre || sesion.fecha_fin;
-                                sesion.fecha_inicio = row.fecha_inicio || sesion.fecha_inicio;
-                                sesion.vendedor = row.vendedor || row.usuario_nombre || sesion.vendedor || 'Sistema';
-                                sesion.origen = 'ventas_contables';
-                                return;
-                            }
-
-                            if (idsExistentes.has(row.id)) return;
-
-                            this.sesiones.push({
-                                id: row.id,
-                                ventaId: row.id,
-                                sesionId: row.sesion_id || null,
-                                salaId: row.sala_id || null,
-                                salaNombre: row.sala_nombre || 'Tienda',
-                                estacion: row.estacion || 'Tienda',
-                                cliente: row.cliente || 'Cliente',
-                                fecha_inicio: row.fecha_inicio || row.fecha_cierre,
-                                fecha_fin: row.fecha_cierre || row.fecha_inicio || new Date().toISOString(),
-                                metodoPago: metodoPago,
-                                tarifa_base: 0,
-                                tarifa: 0,
-                                costoAdicional: 0,
-                                tiemposAdicionales: [],
-                                productos: [],
-                                totalProductos: Number(row.subtotal_productos || 0),
-                                totalGeneral: Number(row.total || 0),
-                                descuento: Number(row.descuento || 0),
-                                finalizada: true,
-                                estado: row.estado || 'cerrada',
-                                vendedor: row.vendedor || row.usuario_nombre || 'Sistema',
-                                origen: 'ventas_tienda'
-                            });
-                        });
-
-                        // Ordenar por fecha de cierre
-                        this.sesiones.sort((a, b) => new Date(this.obtenerFechaReferenciaSesion(b)) - new Date(this.obtenerFechaReferenciaSesion(a)));
-                    }
-                } catch (errVentas) {
-                    console.warn('⚠️ No se pudieron cargar ventas contables:', errVentas?.message || errVentas);
-                }
-
-                // 4. Fallback: ventas de tienda desde movimientos_stock
-                try {
-                    const resMov = await window.databaseService.select('movimientos_stock', {
-                        select: 'id, tipo, cantidad, valor_total, motivo, referencia, fecha_movimiento',
-                        filtros: { tipo: 'venta' },
-                        ordenPor: { campo: 'fecha_movimiento', direccion: 'desc' },
-                        limite: 300,
-                        noCache: true
-                    });
-
-                    if (resMov && resMov.success && Array.isArray(resMov.data)) {
-                        const movimientos = resMov.data.filter(m => {
-                            const ref = String(m.referencia || '').toUpperCase();
-                            const motivo = String(m.motivo || '').toLowerCase();
-                            return ref.startsWith('TIENDA-') || motivo.includes('venta tienda');
-                        });
-
-                        const grupos = new Map();
-                        const obtenerMetodo = (texto) => {
-                            const match = String(texto || '').match(/pago:\s*([^|]+)/i);
-                            const metodo = match ? match[1].trim().toLowerCase() : 'efectivo';
-                            return metodo === 'digital' ? 'qr' : metodo;
-                        };
-                        const obtenerCliente = (texto) => {
-                            const match = String(texto || '').match(/venta tienda\s*-\s*([^|]+)/i);
-                            return match ? match[1].trim() : 'Cliente tienda';
-                        };
-
-                        movimientos.forEach(m => {
-                            const ref = (m.referencia && String(m.referencia)) || null;
-                            const fecha = new Date(m.fecha_movimiento || Date.now());
-                            const fechaKey = `${fecha.getFullYear()}-${fecha.getMonth()+1}-${fecha.getDate()}-${fecha.getHours()}-${fecha.getMinutes()}`;
-                            const metodo = obtenerMetodo(m.motivo);
-                            const cliente = obtenerCliente(m.motivo);
-                            const key = ref || `TIENDA-${fechaKey}-${cliente}-${metodo}`;
-
-                            if (!grupos.has(key)) {
-                                grupos.set(key, {
-                                    id: key,
-                                    ventaId: null,
-                                    sesionId: null,
-                                    salaId: null,
-                                    salaNombre: 'Tienda',
-                                    estacion: 'Tienda',
-                                    cliente: cliente,
-                                    fecha_inicio: fecha.toISOString(),
-                                    fecha_fin: fecha.toISOString(),
-                                    metodoPago: metodo,
-                                    tarifa_base: 0,
-                                    tarifa: 0,
-                                    costoAdicional: 0,
-                                    tiemposAdicionales: [],
-                                    productos: [],
-                                    totalProductos: 0,
-                                    totalGeneral: 0,
-                                    descuento: 0,
-                                    finalizada: true,
-                                    estado: 'cerrada',
-                                    vendedor: 'Tienda',
-                                    origen: 'movimientos_tienda'
-                                });
-                            }
-
-                            const g = grupos.get(key);
-                            g.totalProductos += Number(m.valor_total || 0);
-                            g.totalGeneral += Number(m.valor_total || 0);
-
-                            if (fecha > new Date(g.fecha_fin)) g.fecha_fin = fecha.toISOString();
-                            if (fecha < new Date(g.fecha_inicio)) g.fecha_inicio = fecha.toISOString();
-                        });
-
-                        const idsExistentes = new Set(this.sesiones.map(s => s.id));
-                        grupos.forEach((venta) => {
-                            if (!idsExistentes.has(venta.id)) {
-                                this.sesiones.push(venta);
-                            }
-                        });
-
-                        this.sesiones.sort((a, b) => new Date(this.obtenerFechaReferenciaSesion(b)) - new Date(this.obtenerFechaReferenciaSesion(a)));
-                    }
-                } catch (errMov) {
-                    console.warn('⚠️ No se pudieron cargar ventas desde movimientos_stock:', errMov?.message || errMov);
-                }
-
                 this.actualizarHistorialVentas();
             }
         } catch (error) {
@@ -357,17 +199,6 @@ class GestorVentas {
                     this.actualizarHistorialVentas();
                 })
                 .subscribe();
-
-            if (!this._ventasRT) {
-                this._ventasRT = client
-                    .channel('ventas-contables-rt')
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas' }, async () => {
-                        await this.cargarDesdeSupabase();
-                        this.actualizarEstadisticas();
-                        this.actualizarHistorialVentas();
-                    })
-                    .subscribe();
-            }
         } catch (e) {
             console.warn('⚠️ No se pudo configurar realtime de ventas:', e?.message || e);
         }
@@ -756,15 +587,6 @@ class GestorVentas {
 
         try {
             if (window.databaseService) {
-                // 1) Devolver stock según origen
-                if (sesion.ventaId) {
-                    await this.devolverStockPorVentaId(sesion.ventaId);
-                } else if (sesion.origen === 'movimientos_tienda') {
-                    await this.devolverStockPorMovimientosTienda(sesion);
-                } else if (Array.isArray(sesion.productos) && sesion.productos.length > 0) {
-                    await this.devolverStockPorSesion(sesion);
-                }
-
                 // Si viene del modelo contable, NO borrar: anular.
                 if (sesion.ventaId) {
                     await window.databaseService.update('ventas', sesion.ventaId, {
@@ -782,165 +604,6 @@ class GestorVentas {
         } catch (e) {
             console.warn('⚠️ No se pudo eliminar el registro:', e?.message || e);
             alert('No se pudo eliminar el registro. Revisa permisos en Supabase.');
-        }
-    }
-
-    async devolverStockPorVentaId(ventaId) {
-        try {
-            const resItems = await window.databaseService.select('venta_items', {
-                filtros: { venta_id: ventaId },
-                noCache: true
-            });
-            const items = Array.isArray(resItems?.data) ? resItems.data : [];
-
-            for (const item of items) {
-                if (item.tipo !== 'producto' || !item.producto_id) continue;
-                const cantidad = Number(item.cantidad || 0);
-                if (cantidad <= 0) continue;
-
-                const resProd = await window.databaseService.select('productos', {
-                    filtros: { id: item.producto_id },
-                    limite: 1,
-                    noCache: true
-                });
-                const producto = resProd?.data?.[0];
-                const stockAnterior = Number(producto?.stock || 0);
-                const stockNuevo = stockAnterior + cantidad;
-
-                await window.databaseService.update('productos', item.producto_id, {
-                    stock: stockNuevo,
-                    fecha_actualizacion: new Date().toISOString()
-                });
-
-                await window.databaseService.insert('movimientos_stock', {
-                    producto_id: item.producto_id,
-                    tipo: 'entrada',
-                    cantidad: cantidad,
-                    stock_anterior: stockAnterior,
-                    stock_nuevo: stockNuevo,
-                    costo_unitario: Number(item.precio_unitario || 0),
-                    valor_total: Number(item.subtotal || 0),
-                    motivo: `Devolución venta ${ventaId}`,
-                    referencia: `DEV-${ventaId}`,
-                    fecha_movimiento: new Date().toISOString()
-                });
-            }
-        } catch (e) {
-            console.warn('⚠️ No se pudo devolver stock por ventaId:', e?.message || e);
-        }
-    }
-
-    async devolverStockPorSesion(sesion) {
-        try {
-            const productos = Array.isArray(sesion.productos) ? sesion.productos : [];
-            for (const p of productos) {
-                const productoId = p.id || p.productoId || p.producto_id;
-                const cantidad = Number(p.cantidad || 0);
-                if (!productoId || cantidad <= 0) continue;
-
-                const resProd = await window.databaseService.select('productos', {
-                    filtros: { id: productoId },
-                    limite: 1,
-                    noCache: true
-                });
-                const producto = resProd?.data?.[0];
-                const stockAnterior = Number(producto?.stock || 0);
-                const stockNuevo = stockAnterior + cantidad;
-
-                await window.databaseService.update('productos', productoId, {
-                    stock: stockNuevo,
-                    fecha_actualizacion: new Date().toISOString()
-                });
-
-                await window.databaseService.insert('movimientos_stock', {
-                    producto_id: productoId,
-                    tipo: 'entrada',
-                    cantidad: cantidad,
-                    stock_anterior: stockAnterior,
-                    stock_nuevo: stockNuevo,
-                    costo_unitario: Number(p.precio || 0),
-                    valor_total: Number(p.subtotal || (cantidad * Number(p.precio || 0))),
-                    motivo: `Devolución venta sesión ${sesion.id}`,
-                    referencia: `DEV-SES-${sesion.id}`,
-                    fecha_movimiento: new Date().toISOString()
-                });
-            }
-        } catch (e) {
-            console.warn('⚠️ No se pudo devolver stock por sesión:', e?.message || e);
-        }
-    }
-
-    async devolverStockPorMovimientosTienda(sesion) {
-        try {
-            const ref = String(sesion.id || '');
-            let resMov = null;
-
-            if (ref.startsWith('TIENDA-')) {
-                resMov = await window.databaseService.select('movimientos_stock', {
-                    filtros: { referencia: ref },
-                    noCache: true
-                });
-            } else {
-                const fechaInicio = new Date(sesion.fecha_inicio || sesion.fecha_fin || Date.now());
-                const fechaFin = new Date(sesion.fecha_fin || sesion.fecha_inicio || Date.now());
-                resMov = await window.databaseService.select('movimientos_stock', {
-                    filtros: {
-                        tipo: 'venta',
-                        motivo: { operador: 'ilike', valor: '%venta tienda%' }
-                    },
-                    ordenPor: { campo: 'fecha_movimiento', direccion: 'desc' },
-                    limite: 300,
-                    noCache: true
-                });
-                const inicio = fechaInicio.getTime();
-                const fin = fechaFin.getTime() + 5 * 60000;
-                if (resMov && Array.isArray(resMov.data)) {
-                    resMov.data = resMov.data.filter(m => {
-                        const fm = new Date(m.fecha_movimiento || Date.now()).getTime();
-                        return fm >= inicio && fm <= fin;
-                    });
-                }
-            }
-
-            const movimientos = Array.isArray(resMov?.data) ? resMov.data : [];
-            for (const m of movimientos) {
-                const productoId = m.producto_id || m.productoId;
-                const cantidad = Number(m.cantidad || 0);
-                if (!productoId || cantidad <= 0) continue;
-
-                const resProd = await window.databaseService.select('productos', {
-                    filtros: { id: productoId },
-                    limite: 1,
-                    noCache: true
-                });
-                const producto = resProd?.data?.[0];
-                const stockAnterior = Number(producto?.stock || 0);
-                const stockNuevo = stockAnterior + cantidad;
-
-                await window.databaseService.update('productos', productoId, {
-                    stock: stockNuevo,
-                    fecha_actualizacion: new Date().toISOString()
-                });
-
-                await window.databaseService.insert('movimientos_stock', {
-                    producto_id: productoId,
-                    tipo: 'entrada',
-                    cantidad: cantidad,
-                    stock_anterior: stockAnterior,
-                    stock_nuevo: stockNuevo,
-                    costo_unitario: Number(m.costo_unitario || 0),
-                    valor_total: Number(m.valor_total || 0),
-                    motivo: `Devolución venta tienda ${ref}`,
-                    referencia: `DEV-${ref}`,
-                    fecha_movimiento: new Date().toISOString()
-                });
-
-                try {
-                    if (m.id) await window.databaseService.delete('movimientos_stock', m.id);
-                } catch (_) {}
-            }
-        } catch (e) {
-            console.warn('⚠️ No se pudo devolver stock por movimientos de tienda:', e?.message || e);
         }
     }
 
@@ -1293,11 +956,24 @@ class GestorVentas {
                                 </li>
                                 <li class="list-group-item px-0 d-flex justify-content-between">
                                     <span class="text-muted"><i class="fas fa-wallet me-2 text-secondary"></i>Método Pago</span>
-                                    <div>
-                                        <span class="metodo-pago-badge ${this.obtenerClaseMetodoPago(sesion.metodoPago || 'efectivo')}">
-                                            <i class="${this.obtenerIconoMetodoPago(sesion.metodoPago || 'efectivo')}"></i>
-                                            ${this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion)}
-                                        </span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <select class="form-select form-select-sm metodo-pago-select" 
+                                                id="editarMetodoPago_${sesion.id}" 
+                                                style="width: auto; min-width: 150px;"
+                                                data-sesion-id="${sesion.id}"
+                                                data-metodo-original="${sesion.metodoPago || 'efectivo'}">
+                                            <option value="efectivo" ${(sesion.metodoPago || 'efectivo') === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>
+                                            <option value="tarjeta" ${sesion.metodoPago === 'tarjeta' ? 'selected' : ''}>💳 Tarjeta</option>
+                                            <option value="transferencia" ${sesion.metodoPago === 'transferencia' ? 'selected' : ''}>🏦 Transferencia</option>
+                                            <option value="qr" ${sesion.metodoPago === 'qr' ? 'selected' : ''}>📱 QR/Digital</option>
+                                            <option value="parcial" ${sesion.metodoPago === 'parcial' ? 'selected' : ''}>🔀 Pago Parcial</option>
+                                        </select>
+                                        <button class="btn btn-sm btn-success d-none" 
+                                                id="btnGuardarMetodo_${sesion.id}"
+                                                onclick="window.gestorVentas.guardarCambioMetodoPago('${sesion.id}')"
+                                                title="Guardar cambio">
+                                            <i class="fas fa-check"></i>
+                                        </button>
                                     </div>
                                 </li>
                                 <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
@@ -1454,9 +1130,152 @@ class GestorVentas {
         const btnImprimir = document.getElementById('btnImprimirDetalle');
         btnImprimir.onclick = () => this.imprimirFactura(sesion.id);
 
+        // Configurar listener para detectar cambios en el método de pago
+        setTimeout(() => {
+            const selectMetodo = document.getElementById(`editarMetodoPago_${sesion.id}`);
+            const btnGuardar = document.getElementById(`btnGuardarMetodo_${sesion.id}`);
+            
+            if (selectMetodo && btnGuardar) {
+                selectMetodo.addEventListener('change', function() {
+                    const metodoOriginal = this.dataset.metodoOriginal;
+                    const metodoActual = this.value;
+                    
+                    if (metodoOriginal !== metodoActual) {
+                        btnGuardar.classList.remove('d-none');
+                    } else {
+                        btnGuardar.classList.add('d-none');
+                    }
+                });
+            }
+        }, 100);
+
         // Mostrar el modal
         const modal = new bootstrap.Modal(document.getElementById('modalDetalleSesion'));
         modal.show();
+    }
+
+    async guardarCambioMetodoPago(sesionId) {
+        const selectMetodo = document.getElementById(`editarMetodoPago_${sesionId}`);
+        const btnGuardar = document.getElementById(`btnGuardarMetodo_${sesionId}`);
+        
+        if (!selectMetodo) return;
+        
+        const nuevoMetodo = selectMetodo.value;
+        const sesionIndex = this.sesiones.findIndex(s => s.id === sesionId);
+        
+        if (sesionIndex === -1) {
+            alert('Sesión no encontrada');
+            return;
+        }
+
+        try {
+            // Mostrar indicador de carga
+            btnGuardar.disabled = true;
+            btnGuardar.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            // Actualizar en memoria local
+            const sesion = this.sesiones[sesionIndex];
+            const totalGeneral = sesion.totalGeneral || 0;
+            
+            sesion.metodoPago = nuevoMetodo;
+            
+            // Limpiar montos parciales anteriores
+            sesion.monto_efectivo = null;
+            sesion.monto_tarjeta = null;
+            sesion.monto_transferencia = null;
+            sesion.monto_digital = null;
+            
+            // Asignar el total al método correspondiente (excepto si es parcial)
+            if (nuevoMetodo !== 'parcial' && totalGeneral > 0) {
+                switch(nuevoMetodo) {
+                    case 'efectivo':
+                        sesion.monto_efectivo = totalGeneral;
+                        break;
+                    case 'tarjeta':
+                        sesion.monto_tarjeta = totalGeneral;
+                        break;
+                    case 'transferencia':
+                        sesion.monto_transferencia = totalGeneral;
+                        break;
+                    case 'qr':
+                        sesion.monto_digital = totalGeneral;
+                        break;
+                }
+            }
+
+            // Actualizar en Supabase
+            if (window.databaseService && sesion.id) {
+                // Intentar actualizar en tabla ventas primero (si existe)
+                try {
+                    const ventas = await window.databaseService.select('ventas', {
+                        filtros: { sesion_id: sesion.id },
+                        limite: 1,
+                        noCache: true
+                    });
+                    
+                    const ventaId = ventas?.data?.[0]?.id;
+                    
+                    if (ventaId) {
+                        await window.databaseService.update('ventas', ventaId, {
+                            metodo_pago: nuevoMetodo === 'qr' ? 'digital' : nuevoMetodo,
+                            monto_efectivo: sesion.monto_efectivo,
+                            monto_tarjeta: sesion.monto_tarjeta,
+                            monto_transferencia: sesion.monto_transferencia,
+                            monto_digital: sesion.monto_digital,
+                            updated_at: new Date().toISOString()
+                        });
+                        console.log('✅ Actualizado en tabla ventas');
+                    }
+                } catch (ventasError) {
+                    console.warn('⚠️ No se pudo actualizar en tabla ventas:', ventasError.message);
+                }
+                
+                // Actualizar en tabla sesiones (principal)
+                await window.databaseService.update('sesiones', sesion.id, {
+                    metodo_pago: nuevoMetodo === 'qr' ? 'digital' : nuevoMetodo,
+                    metodoPago: nuevoMetodo,
+                    monto_efectivo: sesion.monto_efectivo,
+                    monto_tarjeta: sesion.monto_tarjeta,
+                    monto_transferencia: sesion.monto_transferencia,
+                    monto_digital: sesion.monto_digital,
+                    updated_at: new Date().toISOString()
+                });
+                console.log('✅ Actualizado en tabla sesiones');
+            } else {
+                throw new Error('Servicio de base de datos no disponible');
+            }
+
+            // Actualizar el dataset original para que no muestre el botón de nuevo
+            selectMetodo.dataset.metodoOriginal = nuevoMetodo;
+            
+            // Ocultar botón de guardar
+            btnGuardar.classList.add('d-none');
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = '<i class="fas fa-check"></i>';
+
+            // Recargar la tabla
+            await this.cargarVentas();
+
+            // Mostrar notificación de éxito
+            if (typeof window.mostrarNotificacion === 'function') {
+                window.mostrarNotificacion('Método de pago actualizado correctamente', 'success');
+            } else {
+                alert('Método de pago actualizado correctamente');
+            }
+
+        } catch (error) {
+            console.error('Error al guardar cambio de método de pago:', error);
+            
+            // Restaurar botón
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = '<i class="fas fa-check"></i>';
+            
+            if (typeof window.mostrarNotificacion === 'function') {
+                window.mostrarNotificacion('Error al actualizar el método de pago', 'error');
+            } else {
+                alert('Error al actualizar el método de pago');
+            }
+        }
     }
 
     imprimirFactura(sesionId) {
