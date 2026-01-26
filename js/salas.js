@@ -888,13 +888,27 @@ class GestorSalas {
                 return true;
             });
             
+            // Actualizar sesiones si se removieron duplicados
+            if (sesionesSinDuplicados.length !== sesionesMem.length) {
+                this.sesiones = sesionesSinDuplicados;
+                console.log('  - Sesiones actualizadas después de remover duplicados');
+            }
+            
             // Verificar que las sesiones activas tengan campos requeridos
-            const sesionesActivas = sesionesSinDuplicados.filter(s => !s.finalizada);
+            const sesionesActivas = sesionesSinDuplicados.filter(s => !s.finalizada && s.estado !== 'finalizada' && s.estado !== 'cerrada');
             console.log('  - Sesiones activas encontradas:', sesionesActivas.length);
             
             sesionesActivas.forEach(sesion => {
                 if (!sesion.fecha_inicio || !sesion.salaId || !sesion.estacion) {
                     console.warn('  - ⚠️ Sesión activa con datos incompletos:', sesion);
+                }
+                
+                // Verificar inconsistencias: si tiene fecha_fin pero no está marcada como finalizada
+                if (sesion.fecha_fin && !sesion.finalizada) {
+                    console.warn('  - ⚠️ INCONSISTENCIA: Sesión con fecha_fin pero no finalizada:', sesion.id);
+                    console.warn('     Marcando automáticamente como finalizada...');
+                    sesion.finalizada = true;
+                    sesion.estado = 'finalizada';
                 }
             });
             
@@ -1588,7 +1602,23 @@ class GestorSalas {
     }
 
     actualizarTemporizadores() {
-        const sesionesActivas = this.sesiones.filter(s => !s.finalizada);
+        // Filtro robusto: excluir sesiones finalizadas, cerradas o con estado finalizado
+        const sesionesActivas = this.sesiones.filter(s => {
+            const esFinalizada = s.finalizada === true;
+            const estadoFinalizado = s.estado === 'finalizada' || s.estado === 'cerrada' || s.estado === 'cancelada';
+            const tieneFechaFin = !!s.fecha_fin;
+            
+            // Sesión es activa solo si NO está finalizada en ninguna forma
+            const esActiva = !esFinalizada && !estadoFinalizado;
+            
+            // Debug: si hay una sesión que debería estar finalizada pero se está procesando
+            if (!esActiva && (esFinalizada || estadoFinalizado)) {
+                // Esta sesión no debería estar en el temporizador
+                return false;
+            }
+            
+            return esActiva;
+        });
         
         // Actualizar temporizadores en las estaciones
         sesionesActivas.forEach(sesion => {
@@ -2212,10 +2242,24 @@ class GestorSalas {
     
     finalizarSesion(sesionId) {
         const sesion = this.sesiones.find(s => s.id === sesionId);
-        if (!sesion) return;
+        if (!sesion) {
+            console.warn('⚠️ No se encontró la sesión:', sesionId);
+            return;
+        }
+
+        // ===== PROTECCIÓN CONTRA DOBLE CIERRE =====
+        // Verificar si la sesión ya está finalizada
+        if (sesion.finalizada === true || sesion.estado === 'finalizada' || sesion.estado === 'cerrada') {
+            console.warn('⚠️ Intento de cerrar sesión ya finalizada:', sesionId);
+            mostrarNotificacion('Esta sesión ya fue finalizada anteriormente', 'warning');
+            return;
+        }
 
         const sala = this.salas.find(s => s.id === sesion.salaId);
-        if (!sala) return;
+        if (!sala) {
+            console.warn('⚠️ No se encontró la sala:', sesion.salaId);
+            return;
+        }
 
         // Obtener información del usuario logueado
         const usuarioLogueado = verificarAutenticacion();
@@ -2623,7 +2667,13 @@ class GestorSalas {
 
     async procesarFinalizacion(sesionId) {
         const sesionIndex = this.sesiones.findIndex(s => s.id === sesionId);
-        if (sesionIndex === -1) return;
+        if (sesionIndex === -1) {
+            console.error('❌ No se encontró la sesión con ID:', sesionId);
+            return;
+        }
+
+        console.log('🔄 Procesando finalización de sesión:', sesionId);
+        console.log('  - Estado actual de la sesión:', this.sesiones[sesionIndex]);
 
         const metodoPagoSeleccionado = document.querySelector('input[name="metodoPago"]:checked')?.value || 'efectivo';
         const notas = document.getElementById('notasFinalizacion')?.value || '';
@@ -2634,10 +2684,20 @@ class GestorSalas {
         const usuarioLogueado = verificarAutenticacion();
         const nombreVendedor = usuarioLogueado ? usuarioLogueado.nombre : 'Usuario';
         
-        // Actualizar la sesión con información de cierre
+        // ===== MARCAR SESIÓN COMO FINALIZADA INMEDIATAMENTE =====
+        // Esto es CRÍTICO para evitar que el temporizador siga corriendo
+        const fechaCierre = new Date().toISOString();
         this.sesiones[sesionIndex].finalizada = true;
-        this.sesiones[sesionIndex].fin = new Date().toISOString();
-        this.sesiones[sesionIndex].fecha_fin = new Date().toISOString();
+        this.sesiones[sesionIndex].estado = 'finalizada';
+        this.sesiones[sesionIndex].fin = fechaCierre;
+        this.sesiones[sesionIndex].fecha_fin = fechaCierre;
+        
+        console.log('✅ Sesión marcada como finalizada en memoria:', {
+            id: sesionId,
+            finalizada: this.sesiones[sesionIndex].finalizada,
+            estado: this.sesiones[sesionIndex].estado,
+            fecha_fin: this.sesiones[sesionIndex].fecha_fin
+        });
         
         // Guardar método de pago y detalles de pago parcial
         let metodoPago = metodoPagoSeleccionado;
@@ -2750,7 +2810,8 @@ class GestorSalas {
             console.warn('⚠️ No se pudo guardar sesiones al finalizar:', e?.message || e);
         }
         await guardarVentaContableDesdeSesion(this.sesiones[sesionIndex]);
-        // Limpiar estados de alarma al finalizar
+        
+        // Limpiar estados de alarma y temporizador al finalizar
         try {
             this._alertasTiempoDisparadas.delete(sesionId);
             this._ultimaAlarmaMinuto && this._ultimaAlarmaMinuto.delete(sesionId);
@@ -2758,18 +2819,18 @@ class GestorSalas {
             const estacionCard = nodoTiempo?.closest('.estacion-minimal');
             if (estacionCard) estacionCard.classList.remove('alarma-visual');
         } catch (_) {}
-        // Se agregó tiempo: limpiar alerta y resaltado visual si existían
-        try {
-            this._alertasTiempoDisparadas.delete(sesionId);
-            const nodoTiempo = document.querySelector(`[data-sesion-id="${sesionId}"]`);
-            const estacionCard = nodoTiempo?.closest('.estacion-minimal');
-            if (estacionCard) estacionCard.classList.remove('alarma-visual');
-        } catch (_) {}
         
+        // ===== ACTUALIZAR VISTA INMEDIATAMENTE =====
+        // Forzar actualización de la vista ANTES de cerrar el modal
+        // Esto asegura que el temporizador deje de actualizarse
         console.log('🔍 DEBUG finalizar sesión:');
         console.log('  - Sesión finalizada:', sesion);
-        console.log('  - Total sesiones en localStorage:', this.sesiones.length);
+        console.log('  - Total sesiones:', this.sesiones.length);
         console.log('  - Sesiones finalizadas:', this.sesiones.filter(s => s.finalizada).length);
+        console.log('  - Sesiones activas:', this.sesiones.filter(s => !s.finalizada).length);
+
+        // Actualizar vista INMEDIATAMENTE (sin esperar a Supabase)
+        this.actualizarVista();
 
         // Cerrar modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('modalFinalizarSesion'));
@@ -2777,11 +2838,10 @@ class GestorSalas {
             modal.hide();
         }
 
-        // Actualizar vista (releer desde Supabase si es posible)
-        const refrescado = await this.recargarSesionesRemoto();
-        if (!refrescado) {
-            this.actualizarVista();
-        }
+        // Sincronizar con Supabase en segundo plano (pero la vista ya se actualizó)
+        this.recargarSesionesRemoto().catch(err => {
+            console.warn('⚠️ Error al recargar desde Supabase (no crítico):', err?.message || err);
+        });
 
         // Mostrar confirmación
         let mensajePago = '';

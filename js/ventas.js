@@ -1,5 +1,30 @@
 // Gestión de Ventas - Sistema GameControl Avanzado
 
+// Función para mostrar notificaciones (fallback si main.js no está disponible)
+if (typeof window.mostrarNotificacion !== 'function') {
+    window.mostrarNotificacion = function(mensaje, tipo = 'success') {
+        // Fallback: usar console
+        const icono = {
+            'success': '✅',
+            'error': '❌',
+            'danger': '❌',
+            'warning': '⚠️',
+            'info': 'ℹ️'
+        }[tipo] || 'ℹ️';
+        
+        console.log(`${icono} ${mensaje}`);
+        
+        // Crear notificación toast simple
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${tipo === 'danger' ? 'danger' : tipo} position-fixed top-0 end-0 m-3`;
+        toast.style.zIndex = '9999';
+        toast.textContent = mensaje;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => toast.remove(), 3000);
+    };
+}
+
 // Importar funciones del sistema principal
 function obtenerSesiones() {
     return [];
@@ -147,6 +172,10 @@ class GestorVentas {
                                 fecha_inicio: row.fecha_inicio || row.inicio,
                                 fecha_fin: row.fecha_fin || row.fin || new Date().toISOString(),
                                 metodoPago: metodoPago,
+                                monto_efectivo: Number(row.monto_efectivo || 0),
+                                monto_transferencia: Number(row.monto_transferencia || 0),
+                                monto_tarjeta: Number(row.monto_tarjeta || 0),
+                                monto_digital: Number(row.monto_digital || 0),
                                 tarifa_base: Number(row.tarifa_base || row.total_tiempo || 0),
                                 tarifa: Number(row.tarifa_base || row.total_tiempo || 0),
                                 costoAdicional: Number(row.costo_adicional || 0),
@@ -174,13 +203,12 @@ class GestorVentas {
                     this.lastLoadError = errCarga.message;
                     this.sesiones = [];
                 }
-
-                this.actualizarHistorialVentas();
+                
+                // NO llamar a actualizarHistorialVentas aquí - se llama desde donde se invoca cargarDesdeSupabase
             }
         } catch (error) {
             console.error('❌ Error fatal cargando historial:', error);
             this.lastLoadError = error.message;
-            this.actualizarHistorialVentas(); 
         }
     }
 
@@ -249,6 +277,28 @@ class GestorVentas {
         }
 
         return total;
+    }
+
+    obtenerMetodoPagoVisual(sesion) {
+        const metodo = sesion.metodoPago || sesion.metodo_pago || 'efectivo';
+        const filtro = this.filtrosActivos?.metodoPago;
+
+        if (metodo === 'parcial' && filtro) {
+            const campoMonto = `monto_${filtro}`;
+            const monto = Number(sesion[campoMonto] || 0);
+            const nombre = this.obtenerNombreMetodoPago(filtro);
+            return {
+                texto: `${nombre}${monto > 0 ? ` (${formatearMoneda(monto)})` : ''}`,
+                clase: this.obtenerClaseMetodoPago(filtro),
+                icono: this.obtenerIconoMetodoPago(filtro)
+            };
+        }
+
+        return {
+            texto: this.obtenerNombreMetodoPago(metodo, sesion),
+            clase: this.obtenerClaseMetodoPago(metodo),
+            icono: this.obtenerIconoMetodoPago(metodo)
+        };
     }
 
     obtenerSesionesFinalizadas() {
@@ -425,7 +475,7 @@ class GestorVentas {
         const { etiqueta: salaInfo } = this.resolverInfoSala(sesion);
         const inicio = new Date(sesion.fecha_inicio || sesion.inicio);
         const total = this.calcularTotalSesion(sesion);
-        const metodoPago = this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion);
+        const metodoVisual = this.obtenerMetodoPagoVisual(sesion);
         
         return `
         <div class="venta-card">
@@ -446,9 +496,9 @@ class GestorVentas {
                     <span>${formatearHora(inicio)}</span>
                 </div>
                  <div class="venta-row justify-content-end">
-                     <span class="metodo-pago-badge ${this.obtenerClaseMetodoPago(sesion.metodoPago || 'efectivo')} py-0" style="font-size: 0.8rem">
-                        <i class="${this.obtenerIconoMetodoPago(sesion.metodoPago || 'efectivo')}"></i>
-                        ${metodoPago}
+                            <span class="metodo-pago-badge ${metodoVisual.clase} py-0" style="font-size: 0.8rem">
+                                <i class="${metodoVisual.icono}"></i>
+                                ${metodoVisual.texto}
                     </span>
                 </div>
                 <div class="venta-total">
@@ -530,7 +580,7 @@ class GestorVentas {
                 : '-';
             
             // Método de pago
-            const metodoPago = this.obtenerNombreMetodoPago(sesion.metodoPago || 'efectivo', sesion);
+            const metodoVisual = this.obtenerMetodoPagoVisual(sesion);
             
             return `
                 <tr>
@@ -550,9 +600,9 @@ class GestorVentas {
                     <td>${formatearTiempo(duracionMinutos)}</td>
                     <td>${productosTexto}</td>
                     <td>
-                        <span class="metodo-pago-badge ${this.obtenerClaseMetodoPago(sesion.metodoPago || 'efectivo')}">
-                            <i class="${this.obtenerIconoMetodoPago(sesion.metodoPago || 'efectivo')}"></i>
-                            ${metodoPago}
+                        <span class="metodo-pago-badge ${metodoVisual.clase}">
+                            <i class="${metodoVisual.icono}"></i>
+                            ${metodoVisual.texto}
                         </span>
                     </td>
                     <td class="fw-bold text-success">${formatearMoneda(total)}</td>
@@ -560,6 +610,9 @@ class GestorVentas {
                         <div class="d-flex gap-1 justify-content-center">
                             <button class="btn btn-sm btn-light text-primary border-0 shadow-sm px-2 py-1" onclick="window.gestorVentas.verDetalle('${sesion.id}')" title="Ver detalle" style="width: 32px; height: 32px; border-radius: 8px;">
                                 <i class="fas fa-eye fa-sm"></i>
+                            </button>
+                            <button class="btn btn-sm btn-light text-warning border-0 shadow-sm px-2 py-1" onclick="window.gestorVentas.editarVenta('${sesion.id}')" title="Editar" style="width: 32px; height: 32px; border-radius: 8px;">
+                                <i class="fas fa-edit fa-sm"></i>
                             </button>
                             <button class="btn btn-sm btn-light text-success border-0 shadow-sm px-2 py-1" onclick="window.gestorVentas.imprimirFactura('${sesion.id}')" title="Imprimir" style="width: 32px; height: 32px; border-radius: 8px;">
                                 <i class="fas fa-print fa-sm"></i>
@@ -580,30 +633,164 @@ class GestorVentas {
 
     async eliminarRegistro(sesionId) {
         const sesion = this.sesiones.find(s => s.id === sesionId);
-        if (!sesion) return;
+        if (!sesion) {
+            console.warn('⚠️ No se encontró la sesión:', sesionId);
+            mostrarNotificacion('No se encontró el registro de venta', 'warning');
+            return;
+        }
 
+        console.log('🗑️ Intentando eliminar registro:', sesionId);
+        console.log('  - Sesión a eliminar:', sesion);
+
+        // Confirmación del usuario
         const confirmado = window.confirm('¿Eliminar este registro de venta? Esta acción no se puede deshacer.');
-        if (!confirmado) return;
+        if (!confirmado) {
+            console.log('❌ Eliminación cancelada por el usuario');
+            return;
+        }
 
         try {
-            if (window.databaseService) {
-                // Si viene del modelo contable, NO borrar: anular.
-                if (sesion.ventaId) {
-                    await window.databaseService.update('ventas', sesion.ventaId, {
-                        estado: 'anulada',
-                        updated_at: new Date().toISOString()
-                    });
+            if (!window.databaseService) {
+                throw new Error('databaseService no disponible');
+            }
+
+            console.log('🔄 Eliminando desde Supabase...');
+            
+            // ===== ELIMINAR DIRECTAMENTE DESDE SUPABASE =====
+            // Si viene del modelo contable (tabla ventas), anular Y eliminar de sesiones
+            if (sesion.ventaId) {
+                console.log('  - Anulando venta contable:', sesion.ventaId);
+                const resultadoVenta = await window.databaseService.update('ventas', sesion.ventaId, {
+                    estado: 'anulada',
+                    updated_at: new Date().toISOString()
+                });
+                
+                if (!resultadoVenta.success) {
+                    throw new Error(resultadoVenta.error || 'Error al anular venta');
+                }
+                console.log('✅ Venta contable anulada correctamente');
+                
+                // IMPORTANTE: También eliminar de la tabla sesiones
+                console.log('  - Eliminando sesión asociada de BD:', sesionId);
+                const resultadoSesion = await window.databaseService.delete('sesiones', sesionId);
+                
+                console.log('  - Resultado eliminación sesión:', resultadoSesion);
+                
+                if (!resultadoSesion.success || resultadoSesion.deletedCount === 0) {
+                    console.warn('⚠️ No se pudo eliminar la sesión asociada, pero la venta fue anulada');
+                    // No lanzar error, porque al menos la venta se anuló
                 } else {
-                    await window.databaseService.delete('sesiones', sesionId);
+                    console.log('✅ Sesión asociada eliminada correctamente');
+                }
+            } else {
+                // Eliminar directamente de la tabla sesiones
+                console.log('  - Eliminando sesión de BD:', sesionId);
+                const resultado = await window.databaseService.delete('sesiones', sesionId);
+                
+                console.log('  - Resultado de la eliminación:', resultado);
+                
+                // Verificar que realmente se eliminó
+                if (!resultado.success) {
+                    console.error('❌ La eliminación falló:', resultado.error || 'Error desconocido');
+                    throw new Error(resultado.error || 'Error al eliminar sesión');
+                }
+                
+                if (resultado.deletedCount === 0) {
+                    console.error('❌ No se eliminó ningún registro');
+                    throw new Error('No se pudo eliminar el registro. Verifica los permisos en Supabase o que el registro exista.');
+                }
+                
+                console.log('✅ Sesión eliminada correctamente de Supabase');
+                console.log('  - Registros eliminados:', resultado.deletedCount);
+                
+                // Doble verificación: consultar si aún existe
+                try {
+                    const verificacion = await window.databaseService.select('sesiones', {
+                        filtros: { id: sesionId },
+                        noCache: true
+                    });
+                    if (verificacion.success && verificacion.data && verificacion.data.length > 0) {
+                        console.error('❌ CRÍTICO: La sesión aún existe en la BD después de eliminar');
+                        console.error('  - Esto indica un problema de RLS o permisos');
+                        throw new Error('La sesión no se eliminó de la base de datos. Verifica las políticas RLS.');
+                    } else {
+                        console.log('✅ Verificado: La sesión ya no existe en la BD');
+                    }
+                } catch (errVerif) {
+                    if (errVerif.message.includes('no existe')) {
+                        console.log('✅ Verificación confirmada: registro eliminado');
+                    } else {
+                        throw errVerif;
+                    }
                 }
             }
-            // Actualizar memoria local y UI
+
+            // ===== RECARGAR DATOS DESDE SUPABASE =====
+            console.log('🔄 Recargando datos desde Supabase...');
+            await this.cargarDesdeSupabase();
+            
+            // Asegurar que la sesión eliminada no esté en memoria
+            // (por si la recarga de Supabase tarda o tiene caché)
             this.sesiones = this.sesiones.filter(s => s.id !== sesionId);
+            
+            console.log('🔄 Verificando sesiones después de eliminar...');
+            console.log('  - Total sesiones en memoria:', this.sesiones.length);
+            console.log('  - Sesión eliminada aún existe?:', this.sesiones.some(s => s.id === sesionId));
+            
+            if (this.sesiones.some(s => s.id === sesionId)) {
+                console.error('⚠️ ERROR: La sesión aún está en memoria después de filtrar');
+            }
+            
+            // Forzar actualización de estadísticas y vista
+            console.log('🔄 Actualizando estadísticas...');
             this.actualizarEstadisticas();
+            
+            console.log('🔄 Actualizando historial de ventas...');
             this.actualizarHistorialVentas();
+            
+            console.log('✅ Registro eliminado exitosamente');
+            console.log('  - Sesiones finales:', this.sesiones.length);
+            mostrarNotificacion('Registro de venta eliminado correctamente', 'success');
+            
         } catch (e) {
-            console.warn('⚠️ No se pudo eliminar el registro:', e?.message || e);
-            alert('No se pudo eliminar el registro. Revisa permisos en Supabase.');
+            console.error('❌ Error al eliminar el registro:', e);
+            console.error('  - Mensaje:', e?.message || e);
+            console.error('  - Stack:', e?.stack);
+            
+            // Mensajes de error más específicos
+            let mensajeError = 'No se pudo eliminar el registro.';
+            let mensajeDetallado = '';
+            
+            if (e?.message?.includes('permission') || e?.message?.includes('RLS') || e?.message?.includes('policy')) {
+                mensajeError = 'Sin permisos para eliminar este registro';
+                mensajeDetallado = 'Las políticas de seguridad (RLS) de Supabase están bloqueando la eliminación.\n\n' +
+                    'SOLUCIÓN:\n' +
+                    '1. Ve a Supabase SQL Editor\n' +
+                    '2. Ejecuta el archivo: sql/fix_rls_delete_sesiones.sql\n' +
+                    '3. Esto configurará los permisos correctamente\n\n' +
+                    'O contacta al administrador del sistema.';
+            } else if (e?.message?.includes('not found') || e?.message?.includes('no existe')) {
+                mensajeError = 'El registro ya no existe en la base de datos.';
+                mensajeDetallado = 'Es posible que ya haya sido eliminado anteriormente.';
+            } else if (e?.message?.includes('No se pudo eliminar') || e?.message?.includes('deletedCount')) {
+                mensajeError = 'No se pudo eliminar el registro';
+                mensajeDetallado = 'Causas posibles:\n' +
+                    '• El registro no existe\n' +
+                    '• Las políticas RLS lo impiden\n' +
+                    '• No tienes permisos suficientes\n\n' +
+                    'Ejecuta sql/fix_rls_delete_sesiones.sql en Supabase para resolver.';
+            } else if (e?.message) {
+                mensajeError = `Error: ${e.message}`;
+                mensajeDetallado = 'Revisa la consola del navegador (F12) para más información.';
+            }
+            
+            mostrarNotificacion(mensajeError, 'danger');
+            
+            if (mensajeDetallado) {
+                alert(`${mensajeError}\n\n${mensajeDetallado}`);
+            } else {
+                alert(mensajeError + '\n\nRevisa la consola para más detalles.');
+            }
         }
     }
 
@@ -1275,6 +1462,310 @@ class GestorVentas {
             } else {
                 alert('Error al actualizar el método de pago');
             }
+        }
+    }
+
+    editarVenta(sesionId) {
+        const sesion = this.sesiones.find(s => s.id === sesionId);
+        if (!sesion) {
+            window.mostrarNotificacion('Sesión no encontrada', 'warning');
+            return;
+        }
+
+        // Cargar datos en el formulario
+        document.getElementById('editVentaId').value = sesion.id;
+        document.getElementById('editCliente').value = sesion.cliente || '';
+        document.getElementById('editSala').value = sesion.sala_id || sesion.sala || '';
+        
+        // Formatear fechas para datetime-local
+        if (sesion.fecha_inicio || sesion.inicio) {
+            const fechaInicio = new Date(sesion.fecha_inicio || sesion.inicio);
+            document.getElementById('editFechaInicio').value = this.formatearFechaParaInput(fechaInicio);
+        }
+        
+        if (sesion.fecha_fin || sesion.fin) {
+            const fechaFin = new Date(sesion.fecha_fin || sesion.fin);
+            document.getElementById('editFechaFin').value = this.formatearFechaParaInput(fechaFin);
+        }
+        
+        const metodoPago = sesion.metodoPago || sesion.metodo_pago || 'efectivo';
+        document.getElementById('editMetodoPago').value = metodoPago;
+        document.getElementById('editTotal').value = this.calcularTotalSesion(sesion);
+        document.getElementById('editObservaciones').value = sesion.notas || '';
+        
+        // Cargar opciones de salas
+        this.cargarOpcionesSalasModal();
+        
+        // Cargar productos
+        this.cargarProductosEdicion(sesion);
+        
+        // Configurar campos de pago parcial
+        this.cargarPagoParcial(sesion);
+
+        // Mostrar modal
+        const modal = new bootstrap.Modal(document.getElementById('modalEditarVenta'));
+        modal.show();
+        
+        // Configurar botón de guardar
+        const btnGuardar = document.getElementById('btnGuardarEdicion');
+        btnGuardar.onclick = () => this.guardarEdicionVenta();
+        
+        // Configurar botón de agregar producto
+        const btnAgregarProducto = document.getElementById('btnAgregarProductoEdit');
+        btnAgregarProducto.onclick = () => this.agregarProductoEdicion();
+
+        // Configurar cambio de método de pago
+        const selectMetodo = document.getElementById('editMetodoPago');
+        if (selectMetodo) {
+            selectMetodo.onchange = () => this.togglePagoParcial();
+        }
+    }
+
+    formatearFechaParaInput(fecha) {
+        const year = fecha.getFullYear();
+        const month = String(fecha.getMonth() + 1).padStart(2, '0');
+        const day = String(fecha.getDate()).padStart(2, '0');
+        const hours = String(fecha.getHours()).padStart(2, '0');
+        const minutes = String(fecha.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    cargarOpcionesSalasModal() {
+        const select = document.getElementById('editSala');
+        if (!select) return;
+
+        select.innerHTML = '<option value="">Seleccionar sala...</option>';
+        
+        this.salas.forEach(sala => {
+            const option = document.createElement('option');
+            option.value = sala.id;
+            option.textContent = sala.nombre;
+            select.appendChild(option);
+        });
+    }
+
+    cargarProductosEdicion(sesion) {
+        const container = document.getElementById('editProductosContainer');
+        if (!container) return;
+
+        container.innerHTML = '';
+        
+        if (sesion.productos && sesion.productos.length > 0) {
+            sesion.productos.forEach((producto, index) => {
+                this.agregarProductoEdicion(producto, index);
+            });
+        }
+    }
+
+    agregarProductoEdicion(producto = null, index = null) {
+        const container = document.getElementById('editProductosContainer');
+        if (!container) return;
+
+        const productoIndex = index !== null ? index : container.children.length;
+        
+        const productoDiv = document.createElement('div');
+        productoDiv.className = 'row mb-2 align-items-end producto-item';
+        productoDiv.dataset.index = productoIndex;
+        productoDiv.innerHTML = `
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" placeholder="Nombre del producto"
+                       value="${producto?.nombre || ''}" data-field="nombre">
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control form-control-sm" placeholder="Cantidad" min="1"
+                       value="${producto?.cantidad || 1}" data-field="cantidad">
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control form-control-sm" placeholder="Precio" min="0" step="0.01"
+                       value="${producto?.precio || 0}" data-field="precio">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-danger w-100" onclick="this.closest('.producto-item').remove()">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(productoDiv);
+    }
+
+    cargarPagoParcial(sesion) {
+        const montoEfectivo = document.getElementById('editMontoEfectivo');
+        const montoTransferencia = document.getElementById('editMontoTransferencia');
+        const montoTarjeta = document.getElementById('editMontoTarjeta');
+        const montoDigital = document.getElementById('editMontoDigital');
+
+        if (montoEfectivo) montoEfectivo.value = Number(sesion.monto_efectivo || 0);
+        if (montoTransferencia) montoTransferencia.value = Number(sesion.monto_transferencia || 0);
+        if (montoTarjeta) montoTarjeta.value = Number(sesion.monto_tarjeta || 0);
+        if (montoDigital) montoDigital.value = Number(sesion.monto_digital || 0);
+
+        this.togglePagoParcial();
+    }
+
+    togglePagoParcial() {
+        const metodo = document.getElementById('editMetodoPago')?.value;
+        const contenedor = document.getElementById('editPagoParcialFields');
+        const totalInput = document.getElementById('editTotal');
+
+        if (!contenedor || !totalInput) return;
+
+        const esParcial = metodo === 'parcial';
+        contenedor.style.display = esParcial ? 'flex' : 'none';
+        totalInput.readOnly = esParcial;
+        if (esParcial) {
+            const montoEfectivo = document.getElementById('editMontoEfectivo');
+            const montoTransferencia = document.getElementById('editMontoTransferencia');
+            const montoTarjeta = document.getElementById('editMontoTarjeta');
+            const montoDigital = document.getElementById('editMontoDigital');
+
+            if (montoEfectivo) montoEfectivo.oninput = () => this.recalcularTotalParcial();
+            if (montoTransferencia) montoTransferencia.oninput = () => this.recalcularTotalParcial();
+            if (montoTarjeta) montoTarjeta.oninput = () => this.recalcularTotalParcial();
+            if (montoDigital) montoDigital.oninput = () => this.recalcularTotalParcial();
+
+            this.recalcularTotalParcial();
+        }
+    }
+
+    recalcularTotalParcial() {
+        const totalInput = document.getElementById('editTotal');
+        const montoEfectivo = parseFloat(document.getElementById('editMontoEfectivo')?.value) || 0;
+        const montoTransferencia = parseFloat(document.getElementById('editMontoTransferencia')?.value) || 0;
+        const montoTarjeta = parseFloat(document.getElementById('editMontoTarjeta')?.value) || 0;
+        const montoDigital = parseFloat(document.getElementById('editMontoDigital')?.value) || 0;
+
+        if (totalInput) {
+            totalInput.value = (montoEfectivo + montoTransferencia + montoTarjeta + montoDigital).toFixed(2);
+        }
+    }
+
+    async guardarEdicionVenta() {
+        try {
+            const ventaId = document.getElementById('editVentaId').value;
+            const sesion = this.sesiones.find(s => s.id === ventaId);
+            
+            if (!sesion) {
+                throw new Error('Sesión no encontrada');
+            }
+
+            // Recopilar datos del formulario
+            const salaId = document.getElementById('editSala').value;
+            if (!salaId) {
+                window.mostrarNotificacion('Selecciona una sala válida', 'warning');
+                return;
+            }
+
+            const datosActualizados = {
+                cliente: document.getElementById('editCliente').value,
+                sala_id: salaId,
+                fecha_inicio: new Date(document.getElementById('editFechaInicio').value).toISOString(),
+                metodo_pago: document.getElementById('editMetodoPago').value,
+                notas: document.getElementById('editObservaciones').value
+            };
+
+            // Fecha de cierre (opcional)
+            const fechaFinInput = document.getElementById('editFechaFin').value;
+            if (fechaFinInput) {
+                datosActualizados.fecha_fin = new Date(fechaFinInput).toISOString();
+            }
+
+            // Recopilar productos
+            const productosContainer = document.getElementById('editProductosContainer');
+            const productos = [];
+            
+            if (productosContainer) {
+                const productosItems = productosContainer.querySelectorAll('.producto-item');
+                productosItems.forEach(item => {
+                    const nombre = item.querySelector('[data-field="nombre"]').value;
+                    const cantidad = parseFloat(item.querySelector('[data-field="cantidad"]').value) || 0;
+                    const precio = parseFloat(item.querySelector('[data-field="precio"]').value) || 0;
+                    
+                    if (nombre && cantidad > 0) {
+                        productos.push({
+                            nombre,
+                            cantidad,
+                            precio,
+                            subtotal: cantidad * precio
+                        });
+                    }
+                });
+            }
+
+            datosActualizados.productos = productos;
+
+            // Calcular el total manualmente si se proporcionó
+            const totalInput = parseFloat(document.getElementById('editTotal').value) || 0;
+
+            // Asignar el monto total al método de pago correspondiente
+            const metodoPago = datosActualizados.metodo_pago;
+            datosActualizados.monto_efectivo = null;
+            datosActualizados.monto_tarjeta = null;
+            datosActualizados.monto_transferencia = null;
+            datosActualizados.monto_digital = null;
+
+            if (metodoPago === 'parcial') {
+                const montoEfectivo = parseFloat(document.getElementById('editMontoEfectivo').value) || 0;
+                const montoTransferencia = parseFloat(document.getElementById('editMontoTransferencia').value) || 0;
+                const montoTarjeta = parseFloat(document.getElementById('editMontoTarjeta').value) || 0;
+                const montoDigital = parseFloat(document.getElementById('editMontoDigital').value) || 0;
+                const sumaParcial = montoEfectivo + montoTransferencia + montoTarjeta + montoDigital;
+
+                if (sumaParcial <= 0) {
+                    window.mostrarNotificacion('Ingresa montos para el pago parcial', 'warning');
+                    return;
+                }
+
+                datosActualizados.monto_efectivo = montoEfectivo || null;
+                datosActualizados.monto_transferencia = montoTransferencia || null;
+                datosActualizados.monto_tarjeta = montoTarjeta || null;
+                datosActualizados.monto_digital = montoDigital || null;
+                datosActualizados.total_general = sumaParcial;
+                document.getElementById('editTotal').value = sumaParcial.toFixed(2);
+            } else if (totalInput > 0) {
+                datosActualizados.total_general = totalInput;
+                switch(metodoPago) {
+                    case 'efectivo':
+                        datosActualizados.monto_efectivo = totalInput;
+                        break;
+                    case 'tarjeta':
+                        datosActualizados.monto_tarjeta = totalInput;
+                        break;
+                    case 'transferencia':
+                        datosActualizados.monto_transferencia = totalInput;
+                        break;
+                    case 'qr':
+                        datosActualizados.monto_digital = totalInput;
+                        break;
+                }
+            }
+
+            console.log('💾 Guardando edición de venta:', datosActualizados);
+
+            // Actualizar en la base de datos
+            if (window.databaseService) {
+                await window.databaseService.update('sesiones', ventaId, datosActualizados);
+                console.log('✅ Venta actualizada exitosamente');
+                
+                // Actualizar en memoria local
+                Object.assign(sesion, datosActualizados);
+                
+                // Recargar datos
+                await this.cargarDesdeSupabase();
+                this.actualizarVista();
+                
+                // Cerrar modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('modalEditarVenta'));
+                if (modal) modal.hide();
+                
+                window.mostrarNotificacion('Venta actualizada correctamente', 'success');
+            } else {
+                throw new Error('Servicio de base de datos no disponible');
+            }
+
+        } catch (error) {
+            console.error('❌ Error al guardar edición de venta:', error);
+            window.mostrarNotificacion('Error al actualizar la venta: ' + error.message, 'danger');
         }
     }
 

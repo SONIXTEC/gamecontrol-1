@@ -206,23 +206,56 @@ class DatabaseService {
         try {
             const client = await this.getClient();
 
-            const { data, error } = await client
+            console.log(`🗑️ DatabaseService: Eliminando de ${tabla}, ID:`, id);
+
+            const { data, error, count } = await client
                 .from(tabla)
                 .delete()
                 .eq('id', id)
                 .select();
 
             if (error) {
-                console.error(`Error en delete de ${tabla}:`, error);
+                console.error(`❌ Error en delete de ${tabla}:`, error);
+                console.error(`  - Código de error:`, error.code);
+                console.error(`  - Mensaje:`, error.message);
+                console.error(`  - Detalles:`, error.details);
+                console.error(`  - Hint:`, error.hint);
+                
+                // Verificar si es un problema de permisos RLS
+                if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+                    throw new Error(`Sin permisos para eliminar de ${tabla}. Verifica las políticas RLS en Supabase.`);
+                }
+                
                 throw new Error(`Error eliminando de ${tabla}: ${error.message}`);
             }
+
+            // Verificar que se eliminó al menos un registro
+            if (!data || data.length === 0) {
+                console.warn(`⚠️ No se eliminó ningún registro de ${tabla} con ID: ${id}`);
+                console.warn(`  - Posibles causas:`);
+                console.warn(`    1. El registro no existe`);
+                console.warn(`    2. Las políticas RLS impiden la eliminación`);
+                console.warn(`    3. El usuario no tiene permisos`);
+                return { 
+                    success: false, 
+                    data: null,
+                    error: 'No se encontró el registro o no tienes permisos para eliminarlo',
+                    deletedCount: 0
+                };
+            }
+
+            console.log(`✅ DatabaseService: Eliminado correctamente de ${tabla}:`, data.length, 'registro(s)');
 
             // Limpiar caché relacionado
             this.clearTableCache(tabla);
 
-            return { success: true, data: data[0] };
+            return { 
+                success: true, 
+                data: data[0],
+                deletedCount: data.length
+            };
         } catch (error) {
-            console.error(`Error crítico en delete de ${tabla}:`, error);
+            console.error(`❌ Error crítico en delete de ${tabla}:`, error);
             throw error;
         }
     }
