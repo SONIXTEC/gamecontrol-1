@@ -38,35 +38,68 @@ function formatearPorcentaje(valor) {
 
 // Funciones para obtener datos del sistema desde Supabase
 async function obtenerSesiones() {
-    if (!window.databaseService) return [];
-    const resultado = await window.databaseService.select('sesiones', {
-        ordenPor: { campo: 'fecha_inicio', direccion: 'desc' }
-    });
-    return resultado.success ? resultado.data : [];
+    try {
+        if (!window.databaseService) return [];
+        const resultado = await window.databaseService.select('sesiones', {
+            ordenPor: { campo: 'fecha_inicio', direccion: 'desc' },
+            noCache: true
+        });
+        return resultado.success ? resultado.data : [];
+    } catch (error) {
+        console.warn('⚠️ No se pudieron cargar sesiones:', error?.message || error);
+        return [];
+    }
 }
 
 async function obtenerVentas() {
-    if (!window.databaseService) return [];
-    const resultado = await window.databaseService.select('ventas', {
-        ordenPor: { campo: 'fecha_cierre', direccion: 'desc' }
-    });
-    return resultado.success ? resultado.data : [];
+    try {
+        if (!window.databaseService) return [];
+        const resultado = await window.databaseService.select('ventas', {
+            ordenPor: { campo: 'fecha_cierre', direccion: 'desc' },
+            noCache: true
+        });
+        return resultado.success ? resultado.data : [];
+    } catch (error) {
+        console.warn('⚠️ No se pudieron cargar ventas, intentando vista_ventas:', error?.message || error);
+        try {
+            const fallback = await window.databaseService.select('vista_ventas', {
+                ordenPor: { campo: 'fecha_cierre', direccion: 'desc' },
+                noCache: true
+            });
+            return fallback.success ? fallback.data : [];
+        } catch (errVista) {
+            console.warn('⚠️ No se pudo cargar vista_ventas:', errVista?.message || errVista);
+            return [];
+        }
+    }
 }
 
 async function obtenerGastos() {
-    if (!window.databaseService) return [];
-    const resultado = await window.databaseService.select('gastos', {
-        ordenPor: { campo: 'fecha_gasto', direccion: 'desc' }
-    });
-    return resultado.success ? resultado.data : [];
+    try {
+        if (!window.databaseService) return [];
+        const resultado = await window.databaseService.select('gastos', {
+            ordenPor: { campo: 'fecha_gasto', direccion: 'desc' },
+            noCache: true
+        });
+        return resultado.success ? resultado.data : [];
+    } catch (error) {
+        console.warn('⚠️ No se pudieron cargar gastos:', error?.message || error);
+        return [];
+    }
 }
 
 async function obtenerSalas() {
-    if (!window.databaseService) return [];
-    const resultado = await window.databaseService.select('salas', {
-        ordenPor: { campo: 'nombre', direccion: 'asc' }
-    });
-    return resultado.success ? resultado.data : [];
+    try {
+        if (!window.databaseService) return [];
+        const resultado = await window.databaseService.select('salas', {
+            ordenPor: { campo: 'nombre', direccion: 'asc' },
+            noCache: true
+        });
+        return resultado.success ? resultado.data : [];
+    } catch (error) {
+        console.warn('⚠️ No se pudieron cargar salas:', error?.message || error);
+        return [];
+    }
 }
 
 async function obtenerProductos() {
@@ -211,10 +244,15 @@ class GestorReportes {
         
         if (usarVentas) {
             // Usar tabla ventas (más precisa y completa)
-            const ventas = this.filtrarDatos(this.ventas.filter(v => v.estado === 'cerrada'), 'fecha_cierre');
+            const ventas = this.filtrarDatos(this.ventas.filter(v =>
+                v.estado === 'cerrada' ||
+                v.estado === 'finalizada' ||
+                v.estado === 'cerrado' ||
+                (!v.estado && v.fecha_cierre)
+            ), 'fecha_cierre');
             
             const ingresosTotales = ventas.reduce((total, venta) => {
-                return total + (venta.total || 0);
+                return total + (venta.total || venta.total_general || 0);
             }, 0);
 
             const totalTransacciones = ventas.length;
@@ -233,7 +271,7 @@ class GestorReportes {
             console.log('📊 Calculando ingresos por método desde tabla ventas:');
             ventas.forEach(venta => {
                 let metodo = venta.metodo_pago || 'efectivo';
-                const monto = venta.total || 0;
+                const monto = venta.total || venta.total_general || 0;
                 
                 // Normalizar: digital = qr (igual que en ventas.js)
                 if (metodo === 'digital') metodo = 'qr';

@@ -44,6 +44,11 @@ function guardarMovimientos(movimientos) {
     localStorage.setItem('movimientos_stock', JSON.stringify(movimientos));
 }
 
+function esMovimientoSincronizadoGenerico(mov) {
+    const texto = (mov?.motivo || mov?.referencia || mov?.observaciones || '').toString().toLowerCase();
+    return texto.includes('sincronización: venta en sala') && texto.includes('genérico');
+}
+
 // Clase principal para gestión de stock
 class GestorStock {
     constructor() {
@@ -179,7 +184,8 @@ class GestorStock {
             let resultado = await window.databaseService.select('movimientos_stock', {
                 select: '*, producto:productos(nombre), usuario:usuarios(nombre)',
                 ordenPor: { campo: 'fecha_movimiento', direccion: 'desc' },
-                limite: 50
+                limite: 50,
+                noCache: true
             });
             
             // Si falla, intentar carga simple
@@ -188,12 +194,36 @@ class GestorStock {
                 resultado = await window.databaseService.select('movimientos_stock', {
                     select: '*', // Sin joins
                     ordenPor: { campo: 'fecha_movimiento', direccion: 'desc' },
-                    limite: 50
+                    limite: 50,
+                    noCache: true
                 });
             }
 
             if (resultado && resultado.success && resultado.data) {
-                this.movimientos = resultado.data.map(m => {
+                const movimientosFiltrados = resultado.data.filter(m => {
+                    const motivo = (m.motivo || m.referencia || '').toString().toLowerCase();
+                    const costo = Number(m.costo_unitario) || 0;
+                    const total = Number(m.valor_total) || 0;
+                    const cantidad = Number(m.cantidad) || 0;
+
+                    // Filtrar movimientos inválidos (creación sin costo/total)
+                    const esCreacionInvalida = m.tipo === 'entrada'
+                        && costo === 0
+                        && total === 0
+                        && motivo.includes('producto creado');
+
+                    // Filtrar ventas inválidas con monto/cantidad en 0
+                    const esVentaInvalida = m.tipo === 'venta'
+                        && total === 0
+                        && cantidad === 0;
+
+                    // Filtrar movimientos sincronizados genéricos
+                    const esSyncGenerico = esMovimientoSincronizadoGenerico(m);
+
+                    return !esCreacionInvalida && !esVentaInvalida && !esSyncGenerico;
+                });
+
+                this.movimientos = movimientosFiltrados.map(m => {
                     // Resolver nombre de producto manualmente si falta (cache local)
                     let nombreProducto = m.producto?.nombre;
                     if (!nombreProducto && m.producto_id) {
@@ -254,7 +284,10 @@ class GestorStock {
 
             console.log('📅 Cargando ventas por fecha. Filtro:', inicio.toISOString(), finMenos.toISOString());
 
-            this.mostrarVentasDiaCargando(etiquetaFecha);
+            const tbody = document.querySelector('#tablaVentasDia tbody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Actualizando...</td></tr>';
+            }
 
             const client = await window.databaseService.getClient();
 
@@ -286,6 +319,13 @@ class GestorStock {
             let ventas = [];
             if (resultado && resultado.success) {
                 ventas = resultado.data || [];
+
+                ventas = ventas.filter(v => {
+                    const total = Number(v.valor_total) || 0;
+                    const cantidad = Number(v.cantidad) || 0;
+                    const esSyncGenerico = esMovimientoSincronizadoGenerico(v);
+                    return !(total === 0 && cantidad === 0) && !esSyncGenerico;
+                });
 
                 ventas.forEach(v => {
                     if (!v.producto || !v.producto.nombre) {
@@ -319,36 +359,8 @@ class GestorStock {
             return totalVentas;
         } catch (error) {
             console.error('❌ Excepción en cargarVentasPorFecha:', error);
-            const hoyISO = obtenerFechaLocalYYYYMMDD(new Date());
-            const fechaFallback = fechaISO || hoyISO;
-            const etiquetaFallback = fechaFallback === hoyISO
-                ? 'Hoy'
-                : new Date(`${fechaFallback}T00:00:00`).toLocaleDateString('es-CO');
-
-            if (opciones.actualizarResumen) {
-                const ventasHoyElement = document.getElementById('ventasHoyStock');
-                const ventasHoyDetalle = document.getElementById('ventasHoyDetalle');
-
-                if (ventasHoyElement) ventasHoyElement.textContent = formatearMoneda(0);
-                if (ventasHoyDetalle) {
-                    ventasHoyDetalle.innerHTML = '<i class="fas fa-clock"></i> 0 ventas hoy';
-                    ventasHoyDetalle.className = 'text-muted mb-0';
-                }
-            }
-
-            this.renderizarTablaVentasDia([], 0, etiquetaFallback);
             return 0;
         }
-    }
-
-    mostrarVentasDiaCargando(etiquetaFecha) {
-        const tbody = document.querySelector('#tablaVentasDia tbody');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Actualizando...</td></tr>';
-        }
-
-        const badge = document.getElementById('badgeTotalVentasDia');
-        if (badge) badge.textContent = `Total ${etiquetaFecha}: ${formatearMoneda(0)}`;
     }
 
     renderizarTablaVentasDia(ventas, total, etiquetaFecha = 'Hoy') {
@@ -1182,30 +1194,19 @@ class GestorStock {
         this.productos.push(nuevoProducto);
         guardarProductos(this.productos);
             
-        // Registrar movimiento también en Supabase si es posible
-        try {
-            if (window.databaseService) {
-                const movPayload = {
-                    producto_id: nuevoProducto.id,
-                    tipo: 'entrada',
-                    cantidad: Number(nuevoProducto.stock) || 0,
-                    stock_anterior: 0,
-                    stock_nuevo: Number(nuevoProducto.stock) || 0,
-                    costo_unitario: Number(nuevoProducto.costo) || 0,
-                    valor_total: (Number(nuevoProducto.costo) || 0) * (Number(nuevoProducto.stock) || 0),
-                    motivo: 'Producto creado'
-                };
-                await window.databaseService.insert('movimientos_stock', movPayload);
-            }
-        } catch (_) {}
-
-        // Registrar movimiento local
+        // Registrar movimiento (unificado)
         this.registrarMovimiento({
             productoId: nuevoProducto.id,
+            productoNombre: nuevoProducto.nombre,
             tipo: 'entrada',
-            cantidad: nuevoProducto.stock,
+            cantidad: Number(nuevoProducto.stock) || 0,
+            precioUnitario: Number(nuevoProducto.costo) || 0,
+            precioTotal: (Number(nuevoProducto.costo) || 0) * (Number(nuevoProducto.stock) || 0),
             observaciones: 'Producto creado',
-            usuario: 'Usuario actual'
+            motivo: 'Producto creado',
+            usuario: 'Usuario actual',
+            stockAnterior: 0,
+            stockNuevo: Number(nuevoProducto.stock) || 0
         });
 
         this.cargarProductos();
@@ -1821,6 +1822,7 @@ class GestorStock {
             
             return `
                 <tr>
+                    <td class="small">${movimiento.productoId || '-'}</td>
                     <td class="small">${new Date(movimiento.fecha).toLocaleString('es-ES', {hour12: true})}</td>
                     <td>
                         <div class="d-flex flex-column">
@@ -1886,7 +1888,7 @@ class GestorStock {
             const valorCard = stockCards[2].closest('.dashboard-card');
             if (valorCard) {
                 const titulo = valorCard.querySelector('.card-title');
-                if (titulo) titulo.textContent = 'EN USO';
+                if (titulo) titulo.textContent = 'Valor Inventario';
                 
                 // Agregar información de ganancia potencial
                 const textoExtra = valorCard.querySelector('p');
@@ -2568,13 +2570,7 @@ class GestorStock {
     }
 }
 
-// Inicializar solo en la página de stock
+// Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
-    const isStockPage = !!document.getElementById('tablaProductos')
-        || !!document.getElementById('formNuevoProducto')
-        || !!document.getElementById('tablaMovimientos');
-
-    if (!isStockPage) return;
-
     window.gestorStock = new GestorStock();
 }); 
