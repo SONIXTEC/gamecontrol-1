@@ -974,10 +974,63 @@ class GestorReportes {
     configurarEventListeners() {
         // Filtros
         const selectPeriodo = document.querySelector('select[data-filtro="periodo"]');
+        const contenedoresFechas = document.querySelectorAll('.filtro-fecha-personalizada');
+        const inputFechaInicio = document.querySelector('input[data-filtro="fecha-inicio"]');
+        const inputFechaFin = document.querySelector('input[data-filtro="fecha-fin"]');
+
+        const toggleFechasPersonalizadas = (mostrar) => {
+            contenedoresFechas.forEach((contenedor) => {
+                contenedor.classList.toggle('d-none', !mostrar);
+            });
+        };
+
+        const establecerFechasPorDefecto = () => {
+            const hoy = new Date();
+            const hoyStr = hoy.toISOString().split('T')[0];
+            if (inputFechaInicio && !inputFechaInicio.value) {
+                inputFechaInicio.value = hoyStr;
+            }
+            if (inputFechaFin && !inputFechaFin.value) {
+                inputFechaFin.value = hoyStr;
+            }
+            if (inputFechaInicio && inputFechaFin) {
+                this.filtrosActivos.fechaInicio = inputFechaInicio.value;
+                this.filtrosActivos.fechaFin = inputFechaFin.value;
+            }
+        };
+
         if (selectPeriodo) {
             selectPeriodo.addEventListener('change', async (e) => {
                 this.filtrosActivos.periodo = e.target.value;
+                if (e.target.value === 'personalizado') {
+                    toggleFechasPersonalizadas(true);
+                    establecerFechasPorDefecto();
+                } else {
+                    toggleFechasPersonalizadas(false);
+                    this.filtrosActivos.fechaInicio = null;
+                    this.filtrosActivos.fechaFin = null;
+                }
                 await this.actualizarTodosLosReportes();
+            });
+        }
+
+        if (inputFechaInicio) {
+            inputFechaInicio.addEventListener('change', async (e) => {
+                if (selectPeriodo?.value !== 'personalizado') return;
+                this.filtrosActivos.fechaInicio = e.target.value || null;
+                if (this.filtrosActivos.fechaInicio && this.filtrosActivos.fechaFin) {
+                    await this.actualizarTodosLosReportes();
+                }
+            });
+        }
+
+        if (inputFechaFin) {
+            inputFechaFin.addEventListener('change', async (e) => {
+                if (selectPeriodo?.value !== 'personalizado') return;
+                this.filtrosActivos.fechaFin = e.target.value || null;
+                if (this.filtrosActivos.fechaInicio && this.filtrosActivos.fechaFin) {
+                    await this.actualizarTodosLosReportes();
+                }
             });
         }
 
@@ -1024,8 +1077,22 @@ class GestorReportes {
     // Aplicar filtros por defecto
     aplicarFiltrosPorDefecto() {
         const selectPeriodo = document.querySelector('select[data-filtro="periodo"]');
+        const contenedoresFechas = document.querySelectorAll('.filtro-fecha-personalizada');
+        const inputFechaInicio = document.querySelector('input[data-filtro="fecha-inicio"]');
+        const inputFechaFin = document.querySelector('input[data-filtro="fecha-fin"]');
         if (selectPeriodo) {
             selectPeriodo.value = this.filtrosActivos.periodo;
+        }
+        if (this.filtrosActivos.periodo === 'personalizado') {
+            contenedoresFechas.forEach((contenedor) => contenedor.classList.remove('d-none'));
+            if (inputFechaInicio && this.filtrosActivos.fechaInicio) {
+                inputFechaInicio.value = this.filtrosActivos.fechaInicio;
+            }
+            if (inputFechaFin && this.filtrosActivos.fechaFin) {
+                inputFechaFin.value = this.filtrosActivos.fechaFin;
+            }
+        } else {
+            contenedoresFechas.forEach((contenedor) => contenedor.classList.add('d-none'));
         }
     }
 

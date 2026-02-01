@@ -76,6 +76,58 @@ function formatearTiempo(minutos) {
     return `${mins}m`;
 }
 
+function extraerMontosPagoParcial(notas = '') {
+    if (!notas || typeof notas !== 'string') return null;
+    const match = notas.match(/\[PAGO_PARCIAL\]([^\n]+)/i);
+    if (!match) return null;
+
+    const fragmento = match[1];
+    const regex = /(efectivo|transferencia|tarjeta|digital|qr)\s*:\s*([0-9.,]+)/gi;
+    const montos = { efectivo: 0, transferencia: 0, tarjeta: 0, qr: 0 };
+    let found = false;
+
+    let m;
+    while ((m = regex.exec(fragmento)) !== null) {
+        found = true;
+        const metodo = m[1].toLowerCase();
+        const raw = m[2].replace(/[^0-9]/g, '');
+        const valor = Number(raw || 0);
+        if (metodo === 'digital') {
+            montos.qr += valor;
+        } else {
+            montos[metodo] += valor;
+        }
+    }
+
+    return found ? montos : null;
+}
+
+function obtenerMontosPago(row) {
+    const efectivo = Number(row.monto_efectivo ?? row.montoEfectivo ?? 0);
+    const transferencia = Number(row.monto_transferencia ?? row.montoTransferencia ?? 0);
+    const tarjeta = Number(row.monto_tarjeta ?? row.montoTarjeta ?? 0);
+    const qr = Number(row.monto_digital ?? row.montoDigital ?? 0);
+
+    const montos = { efectivo, transferencia, tarjeta, qr };
+    const tieneMontos = Object.values(montos).some(v => v > 0);
+    if (tieneMontos) return montos;
+
+    const notas = row.notas || row.nota || row.observaciones || '';
+    const extra = extraerMontosPagoParcial(notas);
+    return extra || montos;
+}
+
+function normalizarMetodoPago(metodoPagoRaw, montos) {
+    const metodoBase = metodoPagoRaw === 'digital' ? 'qr' : (metodoPagoRaw || 'efectivo');
+    const metodosConMonto = Object.entries(montos || {})
+        .filter(([, valor]) => Number(valor) > 0)
+        .map(([metodo]) => metodo);
+
+    if (metodosConMonto.length > 1) return 'parcial';
+    if (metodosConMonto.length === 1) return metodosConMonto[0];
+    return metodoBase;
+}
+
 class GestorVentas {
     constructor() {
         this.sesiones = [];
@@ -146,7 +198,8 @@ class GestorVentas {
 
                         sesionesMapeadas = rawData.map(row => {
                             const metodoPagoRaw = row.metodo_pago || row.metodoPago || 'efectivo';
-                            const metodoPago = metodoPagoRaw === 'digital' ? 'qr' : metodoPagoRaw;
+                            const montosPago = obtenerMontosPago(row);
+                            const metodoPago = normalizarMetodoPago(metodoPagoRaw, montosPago);
                             let salaNombre = 'Sala Desconocida';
                             
                             // Resolver nombre sala
@@ -174,10 +227,10 @@ class GestorVentas {
                                 fecha_inicio: row.fecha_inicio || row.inicio,
                                 fecha_fin: row.fecha_fin || row.fin || new Date().toISOString(),
                                 metodoPago: metodoPago,
-                                monto_efectivo: Number(row.monto_efectivo || 0),
-                                monto_transferencia: Number(row.monto_transferencia || 0),
-                                monto_tarjeta: Number(row.monto_tarjeta || 0),
-                                monto_digital: Number(row.monto_digital || 0),
+                                monto_efectivo: Number(montosPago.efectivo || 0),
+                                monto_transferencia: Number(montosPago.transferencia || 0),
+                                monto_tarjeta: Number(montosPago.tarjeta || 0),
+                                monto_digital: Number(montosPago.qr || 0),
                                 tarifa_base: Number(row.tarifa_base || row.total_tiempo || 0),
                                 tarifa: Number(row.tarifa_base || row.total_tiempo || 0),
                                 costoAdicional: Number(row.costo_adicional || 0),
@@ -208,7 +261,8 @@ class GestorVentas {
 
                             ventasTienda = ventasSoloTienda.map(v => {
                                 const metodoPagoRaw = v.metodo_pago || 'efectivo';
-                                const metodoPago = metodoPagoRaw === 'digital' ? 'qr' : metodoPagoRaw;
+                                const montosPago = obtenerMontosPago(v);
+                                const metodoPago = normalizarMetodoPago(metodoPagoRaw, montosPago);
                                 let salaNombre = 'Tienda';
                                 if (v.sala_id) {
                                     const salaObj = this.salas.find(s => s.id === v.sala_id);
@@ -228,10 +282,10 @@ class GestorVentas {
                                     fecha_inicio: v.fecha_inicio || v.fecha_cierre,
                                     fecha_fin: v.fecha_cierre || v.updated_at || new Date().toISOString(),
                                     metodoPago: metodoPago,
-                                    monto_efectivo: Number(v.monto_efectivo || 0),
-                                    monto_transferencia: Number(v.monto_transferencia || 0),
-                                    monto_tarjeta: Number(v.monto_tarjeta || 0),
-                                    monto_digital: Number(v.monto_digital || 0),
+                                    monto_efectivo: Number(montosPago.efectivo || 0),
+                                    monto_transferencia: Number(montosPago.transferencia || 0),
+                                    monto_tarjeta: Number(montosPago.tarjeta || 0),
+                                    monto_digital: Number(montosPago.qr || 0),
                                     tarifa_base: 0,
                                     tarifa: 0,
                                     costoAdicional: 0,
@@ -261,7 +315,8 @@ class GestorVentas {
 
                                 ventasTienda = ventasSoloTienda.map(v => {
                                     const metodoPagoRaw = v.metodo_pago || 'efectivo';
-                                    const metodoPago = metodoPagoRaw === 'digital' ? 'qr' : metodoPagoRaw;
+                                    const montosPago = obtenerMontosPago(v);
+                                    const metodoPago = normalizarMetodoPago(metodoPagoRaw, montosPago);
                                     let salaNombre = 'Tienda';
                                     if (v.sala_id) {
                                         const salaObj = this.salas.find(s => s.id === v.sala_id);
@@ -281,10 +336,10 @@ class GestorVentas {
                                         fecha_inicio: v.fecha_inicio || v.fecha_cierre,
                                         fecha_fin: v.fecha_cierre || v.updated_at || new Date().toISOString(),
                                         metodoPago: metodoPago,
-                                        monto_efectivo: Number(v.monto_efectivo || 0),
-                                        monto_transferencia: Number(v.monto_transferencia || 0),
-                                        monto_tarjeta: Number(v.monto_tarjeta || 0),
-                                        monto_digital: Number(v.monto_digital || 0),
+                                        monto_efectivo: Number(montosPago.efectivo || 0),
+                                        monto_transferencia: Number(montosPago.transferencia || 0),
+                                        monto_tarjeta: Number(montosPago.tarjeta || 0),
+                                        monto_digital: Number(montosPago.qr || 0),
                                         tarifa_base: 0,
                                         tarifa: 0,
                                         costoAdicional: 0,
@@ -369,10 +424,23 @@ class GestorVentas {
     }
 
     calcularTotalSesion(sesion) {
+        const metodoSesion = this.obtenerMetodoPagoSesion(sesion);
         // Si hay filtro de método de pago activo y es pago parcial, devolver solo ese método
-        if (this.filtrosActivos && this.filtrosActivos.metodoPago && sesion.metodoPago === 'parcial') {
+        if (this.filtrosActivos && this.filtrosActivos.metodoPago && metodoSesion === 'parcial') {
             const campoMonto = `monto_${this.filtrosActivos.metodoPago}`;
             return Number(sesion[campoMonto] || 0);
+        }
+
+        // Si es pago parcial y hay montos, usar suma de montos cuando no haya total explícito
+        if (metodoSesion === 'parcial') {
+            const sumaParcial =
+                Number(sesion.monto_efectivo || 0) +
+                Number(sesion.monto_transferencia || 0) +
+                Number(sesion.monto_tarjeta || 0) +
+                Number(sesion.monto_digital || 0);
+            if (sumaParcial > 0 && !(sesion.totalGeneral > 0)) {
+                return sumaParcial;
+            }
         }
         
         // Usar totales guardados si están disponibles y parecen correctos
@@ -402,7 +470,7 @@ class GestorVentas {
     }
 
     obtenerMetodoPagoVisual(sesion) {
-        const metodo = sesion.metodoPago || sesion.metodo_pago || 'efectivo';
+        const metodo = this.obtenerMetodoPagoSesion(sesion);
         const filtro = this.filtrosActivos?.metodoPago;
 
         if (metodo === 'parcial' && filtro) {
@@ -416,11 +484,54 @@ class GestorVentas {
             };
         }
 
+        if (metodo === 'parcial' && !filtro) {
+            return {
+                texto: 'Pago Parcial',
+                clase: this.obtenerClaseMetodoPago(metodo),
+                icono: this.obtenerIconoMetodoPago(metodo)
+            };
+        }
+
         return {
             texto: this.obtenerNombreMetodoPago(metodo, sesion),
             clase: this.obtenerClaseMetodoPago(metodo),
             icono: this.obtenerIconoMetodoPago(metodo)
         };
+    }
+
+    esPagoParcial(sesion) {
+        const montos = [
+            Number(sesion.monto_efectivo || 0),
+            Number(sesion.monto_transferencia || 0),
+            Number(sesion.monto_tarjeta || 0),
+            Number(sesion.monto_digital || 0)
+        ];
+        const activos = montos.filter(m => m > 0).length;
+        return activos > 1;
+    }
+
+    obtenerMetodoPagoSesion(sesion) {
+        if (this.esPagoParcial(sesion)) return 'parcial';
+        const metodo = sesion.metodoPago || sesion.metodo_pago || 'efectivo';
+        return metodo === 'digital' ? 'qr' : metodo;
+    }
+
+    obtenerDetallePagoParcial(sesion) {
+        if (!sesion) return '';
+        const partes = [];
+        if (Number(sesion.monto_efectivo || 0) > 0) {
+            partes.push(`💵 ${formatearMoneda(Number(sesion.monto_efectivo))}`);
+        }
+        if (Number(sesion.monto_tarjeta || 0) > 0) {
+            partes.push(`💳 ${formatearMoneda(Number(sesion.monto_tarjeta))}`);
+        }
+        if (Number(sesion.monto_transferencia || 0) > 0) {
+            partes.push(`🏦 ${formatearMoneda(Number(sesion.monto_transferencia))}`);
+        }
+        if (Number(sesion.monto_digital || 0) > 0) {
+            partes.push(`📱 ${formatearMoneda(Number(sesion.monto_digital))}`);
+        }
+        return partes.join(' + ');
     }
 
     obtenerSesionesFinalizadas() {
@@ -520,7 +631,7 @@ class GestorVentas {
         // Filtrar por método de pago
         if (this.filtrosActivos.metodoPago) {
             sesiones = sesiones.filter(sesion => {
-                const metodoPago = sesion.metodoPago || 'efectivo';
+                const metodoPago = this.obtenerMetodoPagoSesion(sesion);
                 
                 // Si el método de pago coincide directamente
                 if (metodoPago === this.filtrosActivos.metodoPago) {
@@ -598,6 +709,9 @@ class GestorVentas {
         const inicio = new Date(sesion.fecha_inicio || sesion.inicio);
         const total = this.calcularTotalSesion(sesion);
         const metodoVisual = this.obtenerMetodoPagoVisual(sesion);
+        const detalleParcial = this.esPagoParcial(sesion)
+            ? this.obtenerDetallePagoParcial(sesion)
+            : '';
         
         return `
         <div class="venta-card">
@@ -622,6 +736,7 @@ class GestorVentas {
                                 <i class="${metodoVisual.icono}"></i>
                                 ${metodoVisual.texto}
                     </span>
+                    ${detalleParcial ? `<div class="small text-white-50 mt-1" style="text-align:right;">${detalleParcial}</div>` : ''}
                 </div>
                 <div class="venta-total">
                     <span class="text-white-50 small">Total</span>
@@ -704,6 +819,9 @@ class GestorVentas {
             
             // Método de pago
             const metodoVisual = this.obtenerMetodoPagoVisual(sesion);
+            const detalleParcial = this.esPagoParcial(sesion)
+                ? this.obtenerDetallePagoParcial(sesion)
+                : '';
             
             return `
                 <tr>
@@ -727,6 +845,7 @@ class GestorVentas {
                             <i class="${metodoVisual.icono}"></i>
                             <span class="d-inline-block" style="max-width: 200px; white-space: normal; line-height: 1.3;">${metodoVisual.texto}</span>
                         </div>
+                        ${detalleParcial ? `<div class="small text-muted mt-1" style="max-width: 220px; line-height: 1.3;">${detalleParcial}</div>` : ''}
                     </td>
                     <td class="fw-bold text-success">${formatearMoneda(total)}</td>
                     <td class="text-center">

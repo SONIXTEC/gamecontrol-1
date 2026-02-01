@@ -416,12 +416,31 @@
                 </div>
 
                 <!-- Movimientos de Stock -->
-                <div class="module-container">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <h5 class="mb-0">Últimos Movimientos</h5>
-                        <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#panelRollbackMovimientos" aria-expanded="false" aria-controls="panelRollbackMovimientos">
-                            <i class="fas fa-rotate-left me-1"></i>Revertir ventas (emergencia)
-                        </button>
+                <div class="module-container movimientos-card">
+                    <div class="movimientos-toolbar d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fas fa-history text-muted"></i>
+                            <div>
+                                <h5 class="mb-0">Últimos Movimientos</h5>
+                                <small class="text-muted">Registro detallado de entradas, salidas y ventas.</small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="input-group input-group-sm movimientos-search" style="width: 220px;">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                <input type="text" class="form-control" id="buscarMovimiento" placeholder="Buscar producto...">
+                            </div>
+                            <select class="form-select form-select-sm movimientos-filter" id="tipoMovimientoFiltro" style="width: 150px;">
+                                <option value="">Todos los tipos</option>
+                                <option value="venta">Ventas</option>
+                                <option value="entrada">Entradas</option>
+                                <option value="salida">Salidas/Ajustes</option>
+                                <option value="ajuste">Ajuste</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-danger movimientos-emergencia" type="button" data-bs-toggle="collapse" data-bs-target="#panelRollbackMovimientos" aria-expanded="false" aria-controls="panelRollbackMovimientos">
+                                <i class="fas fa-rotate-left me-1"></i>Revertir ventas (emergencia)
+                            </button>
+                        </div>
                     </div>
                     <div class="collapse mt-3" id="panelRollbackMovimientos">
                         <div class="alert alert-warning small mb-3">
@@ -440,23 +459,31 @@
                         </div>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-custom table-hover" id="tablaMovimientos">
-                            <thead>
+                        <table class="table table-custom table-hover movimientos-table" id="tablaMovimientos">
+                            <thead class="movimientos-head">
                                 <tr>
-                                    <th>Producto ID</th>
-                                    <th>Fecha</th>
                                     <th>Producto</th>
-                                    <th>Tipo</th>
-                                    <th>Cantidad</th>
-                                    <th>Usuario/Precio</th>
-                                    <th>Stock</th>
-                                    <th>Observaciones</th>
+                                    <th>Tipo movimiento</th>
+                                    <th class="text-center">Cant.</th>
+                                    <th>Detalle / Valor</th>
+                                    <th class="text-center">Stock final</th>
+                                    <th class="text-end">Fecha</th>
+                                    <th class="text-end"></th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody class="movimientos-body">
                                 <!-- Los movimientos se cargarán dinámicamente aquí -->
                             </tbody>
                         </table>
+                    </div>
+                    <div class="movimientos-footer d-flex justify-content-between align-items-center mt-3">
+                        <div class="text-muted small" id="infoMovimientos">
+                            Mostrando últimos 20 movimientos
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" id="btnMovimientosAnterior">Anterior</button>
+                            <button class="btn btn-sm btn-outline-primary" id="btnMovimientosSiguiente">Siguiente</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -663,12 +690,11 @@
     <script src="../js/notifications.js"></script>
     <script src="../js/stock.js"></script>
 
-    <!-- ===== VERIFICACIÓN DE AUTENTICACIÓN FINAL ===== -->
+    <!-- ===== VERIFICACIÓN DE AUTENTICACIÓN FINAL + MENÚ MÓVIL ===== -->
     <script>
         window.addEventListener('load', function() {
             console.log('🔍 Verificación final de autenticación en stock.html...');
-            
-            // Esperar a que navigation-utils esté disponible
+
             setTimeout(function() {
                 if (window.navigationUtils && window.navigationUtils.checkAndRedirectIfNeeded) {
                     console.log('ℹ️ Usando navigation-utils para verificación de autenticación');
@@ -687,28 +713,23 @@
                         });
                 }
             }, 1000);
-        });
-    </script>
-    
-    <!-- ===== MENÚ MÓVIL ===== -->
-    <script>
-        window.addEventListener('load', function() {
+
             setTimeout(() => {
                 const menuToggle = document.getElementById('menuToggle');
                 const sidebar = document.querySelector('.sidebar');
                 const overlay = document.getElementById('sidebarOverlay');
-                
+
                 if (menuToggle && sidebar && overlay) {
                     const newMenuToggle = menuToggle.cloneNode(true);
                     menuToggle.parentNode.replaceChild(newMenuToggle, menuToggle);
                     const newOverlay = overlay.cloneNode(true);
                     overlay.parentNode.replaceChild(newOverlay, overlay);
-                    
+
                     newMenuToggle.addEventListener('click', function(e) {
                         e.preventDefault();
                         e.stopPropagation();
                         const isOpen = sidebar.classList.contains('show');
-                        
+
                         if (isOpen) {
                             sidebar.classList.remove('show');
                             newOverlay.classList.remove('show');
@@ -721,14 +742,14 @@
                             newMenuToggle.classList.add('active');
                         }
                     });
-                    
+
                     newOverlay.addEventListener('click', function() {
                         sidebar.classList.remove('show');
                         newOverlay.classList.remove('show');
                         document.body.classList.remove('menu-open');
                         newMenuToggle.classList.remove('active');
                     });
-                    
+
                     sidebar.querySelectorAll('.nav-link').forEach(link => {
                         link.addEventListener('click', function() {
                             if (window.innerWidth <= 768) {
@@ -739,7 +760,7 @@
                             }
                         });
                     });
-                    
+
                     console.log('✅ Menú móvil inicializado en stock.html');
                 }
             }, 500);

@@ -275,12 +275,7 @@ async function guardarSesiones(sesiones) {
                     productos: s.productos || [],
                     tiempos_adicionales: s.tiemposAdicionales || [],
                     notas: s.notas || null,
-                    vendedor: s.vendedor || null,
-                    // Agregar montos de pago parcial
-                    monto_efectivo: s.monto_efectivo || null,
-                    monto_transferencia: s.monto_transferencia || null,
-                    monto_tarjeta: s.monto_tarjeta || null,
-                    monto_digital: s.monto_digital || null
+                    vendedor: s.vendedor || null
                 };
                 };
                 
@@ -391,8 +386,7 @@ async function guardarVentaContableDesdeSesion(sesion) {
         const total = Number(sesion.totalGeneral ?? sesion.total_general ?? (subtotalTiempo + subtotalProductos - descuento));
 
         const usuarioIdCandidate = (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null;
-        // Priorizar auth.uid() para cumplir con políticas RLS
-        const usuarioId = (isUuid(authUid) ? authUid : null) || (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null);
+        const usuarioId = (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null) || (isUuid(authUid) ? authUid : null);
 
         // Extraer montos de pago parcial si aplica
         let montoEfectivo = null;
@@ -2794,11 +2788,6 @@ class GestorSalas {
                 alert('Pago parcial inválido: la suma de efectivo + transferencia debe ser igual al total.');
                 return;
             }
-            // Asignar montos a la sesión para que se guarden en BD
-            sesion.monto_efectivo = efectivo;
-            sesion.monto_transferencia = transferencia;
-            sesion.monto_tarjeta = null;
-            sesion.monto_digital = null;
             // Re-aplicar marcador (por si notas se reescribió luego)
             const sinMarcadorParcial = String(sesion.notas || '')
                 .split('\n')
@@ -2807,12 +2796,6 @@ class GestorSalas {
                 .trim();
             const linea = `[PAGO_PARCIAL] efectivo:${efectivo} transferencia:${transferencia}`;
             sesion.notas = (sinMarcadorParcial ? `${sinMarcadorParcial}\n` : '') + linea;
-        } else {
-            // Si NO es pago parcial, asignar el total al método específico
-            sesion.monto_efectivo = metodoPagoSeleccionado === 'efectivo' ? totalGeneral : null;
-            sesion.monto_transferencia = metodoPagoSeleccionado === 'transferencia' ? totalGeneral : null;
-            sesion.monto_tarjeta = metodoPagoSeleccionado === 'tarjeta' ? totalGeneral : null;
-            sesion.monto_digital = (metodoPagoSeleccionado === 'qr' || metodoPagoSeleccionado === 'digital') ? totalGeneral : null;
         }
 
         sesion.totalTiempo = tarifaTiempo;

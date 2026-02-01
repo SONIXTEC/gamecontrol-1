@@ -57,6 +57,8 @@ class GestorStock {
         this.movimientos = [];
         this.categorias = [];
         this.categoriaEditando = null;
+        this.movimientosPagina = 1;
+        this.movimientosPorPagina = 20;
         this.inicializar();
     }
 
@@ -1884,17 +1886,53 @@ class GestorStock {
         const tbody = document.querySelector('#tablaMovimientos tbody');
         if (!tbody) return;
 
-        const movimientosRecientes = this.movimientos.slice(0, 10);
+        const inputBuscar = document.getElementById('buscarMovimiento');
+        const selectTipo = document.getElementById('tipoMovimientoFiltro');
+        const infoMovimientos = document.getElementById('infoMovimientos');
+        const btnAnterior = document.getElementById('btnMovimientosAnterior');
+        const btnSiguiente = document.getElementById('btnMovimientosSiguiente');
+
+        const query = (inputBuscar?.value || '').trim().toLowerCase();
+        const tipoFiltro = (selectTipo?.value || '').trim().toLowerCase();
+
+        const movimientosFiltrados = this.movimientos.filter(mov => {
+            const nombreProducto = (mov.productoNombre || '').toString().toLowerCase();
+            const observaciones = (mov.observaciones || '').toString().toLowerCase();
+            const usuario = (mov.usuario || '').toString().toLowerCase();
+            const productoId = (mov.productoId || '').toString().toLowerCase();
+            const tipo = (mov.tipo || '').toString().toLowerCase();
+
+            const coincideTipo = !tipoFiltro || tipo === tipoFiltro || (tipoFiltro === 'salida' && tipo === 'ajuste');
+            const coincideBusqueda = !query ||
+                nombreProducto.includes(query) ||
+                observaciones.includes(query) ||
+                usuario.includes(query) ||
+                productoId.includes(query);
+
+            return coincideTipo && coincideBusqueda;
+        });
+
+        const total = movimientosFiltrados.length;
+        const totalPaginas = Math.max(1, Math.ceil(total / this.movimientosPorPagina));
+        if (this.movimientosPagina > totalPaginas) this.movimientosPagina = totalPaginas;
+        if (this.movimientosPagina < 1) this.movimientosPagina = 1;
+
+        const inicio = (this.movimientosPagina - 1) * this.movimientosPorPagina;
+        const fin = inicio + this.movimientosPorPagina;
+        const movimientosRecientes = movimientosFiltrados.slice(inicio, fin);
 
         if (movimientosRecientes.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center py-4">
+                    <td colspan="7" class="text-center py-4">
                         <i class="fas fa-history fa-2x text-muted mb-2"></i>
                         <p class="text-muted mb-0">No hay movimientos registrados</p>
                     </td>
                 </tr>
             `;
+            if (infoMovimientos) infoMovimientos.textContent = 'Mostrando 0 movimientos';
+            if (btnAnterior) btnAnterior.disabled = true;
+            if (btnSiguiente) btnSiguiente.disabled = true;
             return;
         }
 
@@ -1905,76 +1943,97 @@ class GestorStock {
                                  'Producto eliminado';
             
             const tipoInfo = {
-                'entrada': { icono: 'fas fa-arrow-up', clase: 'text-success', texto: 'Entrada' },
-                'salida': { icono: 'fas fa-arrow-down', clase: 'text-danger', texto: 'Salida' },
+                'entrada': { icono: 'fas fa-arrow-down', clase: 'text-success', texto: 'Entrada' },
+                'salida': { icono: 'fas fa-arrow-up', clase: 'text-danger', texto: 'Salida' },
                 'venta': { icono: 'fas fa-shopping-cart', clase: 'text-primary', texto: 'Venta' },
+                'ajuste': { icono: 'fas fa-sliders-h', clase: 'text-warning', texto: 'Ajuste' },
                 'eliminacion': { icono: 'fas fa-trash', clase: 'text-danger', texto: 'Eliminación' }
             };
             
             const info = tipoInfo[movimiento.tipo] || { icono: 'fas fa-question', clase: 'text-muted', texto: movimiento.tipo };
             
-            // Información de trazabilidad para ventas desde salas
-            let infoTrazabilidad = '';
-            // Detectar si proviene de salas (por motivo o referencia)
-            const esVentaSalas = movimiento.tipo === 'venta' && 
-                                (movimiento.sesionId || 
-                                (movimiento.observaciones && movimiento.observaciones.includes('sesión')));
-            
-            if (esVentaSalas) {
-                // Obtener detalles del objeto movimiento o parsear observaciones si es necesario
-                const detalle = movimiento.observaciones || '';
-                // Extraer cliente si no está en propiedad directa
-                const cliente = movimiento.cliente || (detalle.includes('Cliente') ? detalle.split('Cliente')[1]?.trim() : 'Cliente desconoc.');
-                
-                infoTrazabilidad = `
-                    <div class="small text-muted mt-1" style="font-size: 0.75rem;">
-                        <i class="fas fa-gamepad me-1 text-primary"></i> Ventas Salas
-                        ${movimiento.estacion ? `• ${movimiento.estacion}` : ''}
-                        <br>
-                        <i class="fas fa-user me-1 text-secondary"></i> ${cliente}
-                    </div>
-                `;
-            } else if (movimiento.observaciones) {
-                // Para otros movimientos, mostrar observación simple
-                infoTrazabilidad = `<div class="small text-muted fst-italic mt-1">${movimiento.observaciones}</div>`;
-            }
-            
-            // Información de precios para ventas
-            let infoPrecioUsuario = '';
-            if (movimiento.tipo === 'venta') {
-                 infoPrecioUsuario = `<div class="fw-bold text-success">${formatearMoneda(movimiento.precioTotal || 0)}</div>`;
-            } else {
-                 infoPrecioUsuario = movimiento.usuario || 'Sistema';
-            }
+            const iniciales = (nombreProducto || 'PR')
+                .split(' ')
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(p => p[0])
+                .join('')
+                .toUpperCase();
+
+            const cantidad = Number(movimiento.cantidad) || 0;
+            let cantidadMostrar = cantidad;
+            if (movimiento.tipo === 'entrada') cantidadMostrar = Math.abs(cantidad);
+            if (movimiento.tipo === 'salida' || movimiento.tipo === 'venta') cantidadMostrar = -Math.abs(cantidad);
+            const claseCantidad = cantidadMostrar > 0 ? 'text-success' : (cantidadMostrar < 0 ? 'text-danger' : 'text-muted');
+            const textoCantidad = `${cantidadMostrar > 0 ? '+' : ''}${cantidadMostrar}`;
+
+            const valorTotal = Number(movimiento.precioTotal || movimiento.valorTotal || 0);
+            const detalle = movimiento.observaciones || 'Movimiento de stock';
+            const esVenta = movimiento.tipo === 'venta';
+            const stockFinal = Number(movimiento.stock || movimiento.stockNuevo || 0);
+            const metaVenta = [movimiento.metodoPago, movimiento.usuario].filter(Boolean).join(' • ');
             
             return `
-                <tr>
-                    <td class="small">${movimiento.productoId || '-'}</td>
-                    <td class="small">${new Date(movimiento.fecha).toLocaleString('es-ES', {hour12: true})}</td>
+                <tr class="movimiento-row">
                     <td>
-                        <div class="d-flex flex-column">
-                            <span class="fw-medium">${nombreProducto}</span>
-                            ${infoTrazabilidad}
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="movimiento-iniciales" data-tipo="${movimiento.tipo}">
+                                ${iniciales}
+                            </div>
+                            <div class="d-flex flex-column">
+                                <span class="fw-medium">${nombreProducto}</span>
+                                ${movimiento.productoId ? `<small class="movimiento-id">ID: ${movimiento.productoId}</small>` : ''}
+                            </div>
                         </div>
                     </td>
                     <td>
-                        <span class="badge bg-light border ${info.clase.replace('text-', 'text-')}">
-                            <i class="${info.icono} me-1"></i>${info.texto}
-                        </span>
+                        <div class="d-flex flex-column">
+                            <span class="movimiento-badge movimiento-badge--${movimiento.tipo}">
+                                <i class="${info.icono} me-1"></i>${info.texto}
+                            </span>
+                            <small class="text-muted">${(movimiento.subtipo || '').toString().toLowerCase() || 'general'}</small>
+                        </div>
                     </td>
-                    <td class="fw-bold text-center">${movimiento.cantidad}</td>
+                    <td class="text-center fw-semibold ${claseCantidad}">${textoCantidad}</td>
                     <td>
-                        ${infoPrecioUsuario}
+                        ${valorTotal > 0 ? `<div class="fw-semibold">${formatearMoneda(valorTotal)}</div>` : ''}
+                        ${esVenta
+                            ? `<small class="movimiento-detalle-sub">${metaVenta || detalle}</small>`
+                            : `<small class="movimiento-detalle-sub">${detalle}</small><small class="movimiento-detalle-meta">${movimiento.usuario || 'Sistema'}</small>`
+                        }
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-light text-dark border">
-                            ${movimiento.stock || movimiento.stockNuevo}
-                        </span>
+                        <span class="movimiento-stock">${stockFinal}</span>
+                        ${stockFinal === 0 ? '<div class="movimiento-agotado">AGOTADO</div>' : ''}
                     </td>
-                    <td><small class="text-muted text-truncate d-block" style="max-width: 150px;" title="${movimiento.observaciones || ''}">${movimiento.observaciones || '-'}</small></td>
+                    <td class="small text-muted text-end">${this.formatearFechaMovimiento(movimiento.fecha)}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-light movimiento-opciones" type="button" title="Opciones" aria-label="Opciones">
+                            <i class="fas fa-ellipsis-h"></i>
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
+
+        const mostradoHasta = Math.min(fin, total);
+        if (infoMovimientos) {
+            infoMovimientos.textContent = `Mostrando ${mostradoHasta} de ${total} movimientos`;
+        }
+        if (btnAnterior) btnAnterior.disabled = this.movimientosPagina <= 1;
+        if (btnSiguiente) btnSiguiente.disabled = this.movimientosPagina >= totalPaginas;
+    }
+
+    formatearFechaMovimiento(fecha) {
+        if (!fecha) return '-';
+        const d = new Date(fecha);
+        if (Number.isNaN(d.getTime())) return '-';
+        const hoy = new Date();
+        const esHoy = d.toDateString() === hoy.toDateString();
+        const hora = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        if (esHoy) return `Hoy, ${hora}`;
+        const fechaCorta = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+        return `${fechaCorta}, ${hora}`;
     }
 
     // === ESTADÍSTICAS ===
@@ -2524,6 +2583,10 @@ class GestorStock {
         const categoriaFiltro = document.getElementById('categoriaFiltro');
         const estadoFiltro = document.getElementById('estadoFiltro');
         const buscarProducto = document.getElementById('buscarProducto');
+        const buscarMovimiento = document.getElementById('buscarMovimiento');
+        const tipoMovimientoFiltro = document.getElementById('tipoMovimientoFiltro');
+        const btnMovimientosAnterior = document.getElementById('btnMovimientosAnterior');
+        const btnMovimientosSiguiente = document.getElementById('btnMovimientosSiguiente');
 
         if (categoriaFiltro) {
             categoriaFiltro.addEventListener('change', () => this.aplicarFiltros());
@@ -2533,6 +2596,30 @@ class GestorStock {
         }
         if (buscarProducto) {
             buscarProducto.addEventListener('input', () => this.aplicarFiltros());
+        }
+        if (buscarMovimiento) {
+            buscarMovimiento.addEventListener('input', () => {
+                this.movimientosPagina = 1;
+                this.cargarMovimientos();
+            });
+        }
+        if (tipoMovimientoFiltro) {
+            tipoMovimientoFiltro.addEventListener('change', () => {
+                this.movimientosPagina = 1;
+                this.cargarMovimientos();
+            });
+        }
+        if (btnMovimientosAnterior) {
+            btnMovimientosAnterior.addEventListener('click', () => {
+                this.movimientosPagina -= 1;
+                this.cargarMovimientos();
+            });
+        }
+        if (btnMovimientosSiguiente) {
+            btnMovimientosSiguiente.addEventListener('click', () => {
+                this.movimientosPagina += 1;
+                this.cargarMovimientos();
+            });
         }
 
         // Filtro de ventas por fecha
