@@ -13,18 +13,27 @@ function formatearMoneda(cantidad) {
     }).format(cantidad);
 }
 
+function parseFechaLocal(fecha) {
+    if (!fecha) return null;
+    if (fecha instanceof Date) return fecha;
+
+    const fechaStr = fecha.toString();
+    const datePart = fechaStr.split('T')[0].split(' ')[0];
+
+    if (datePart.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = datePart.split('-').map(Number);
+        return new Date(year, month - 1, day, 12, 0, 0, 0);
+    }
+
+    const parsed = new Date(fechaStr);
+    return isNaN(parsed) ? null : parsed;
+}
+
 function formatearFecha(fecha) {
     if (!fecha) return '';
-    const fechaStr = fecha.toString();
-    if (fechaStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        return new Date(fechaStr + 'T12:00:00').toLocaleDateString('es-CO', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            timeZone: 'America/Bogota'
-        });
-    }
-    return new Date(fecha).toLocaleDateString('es-CO', {
+    const fechaLocal = parseFechaLocal(fecha);
+    if (!fechaLocal) return '';
+    return fechaLocal.toLocaleDateString('es-CO', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -210,9 +219,9 @@ class GestorReportes {
 
         // Usar fechas personalizadas si están definidas
         if (this.filtrosActivos.fechaInicio && this.filtrosActivos.fechaFin) {
-            fechaInicio = new Date(this.filtrosActivos.fechaInicio);
+            fechaInicio = parseFechaLocal(this.filtrosActivos.fechaInicio) || fechaInicio;
             fechaInicio.setHours(0, 0, 0, 0);
-            fechaFin = new Date(this.filtrosActivos.fechaFin);
+            fechaFin = parseFechaLocal(this.filtrosActivos.fechaFin) || fechaFin;
             fechaFin.setHours(23, 59, 59, 999);
         }
 
@@ -224,8 +233,9 @@ class GestorReportes {
             
             const fechaStr = item[campoReal];
             if (!fechaStr) return false;
-            
-            const fechaItem = new Date(fechaStr + (fechaStr.length === 10 ? 'T12:00:00' : ''));
+
+            const fechaItem = parseFechaLocal(fechaStr);
+            if (!fechaItem) return false;
             return fechaItem >= fechaInicio && fechaItem <= fechaFin;
         });
 
@@ -947,7 +957,8 @@ class GestorReportes {
             const campoFecha = usarVentas ? 'fecha_cierre' : 'fecha_inicio';
             const ingresosDelDia = ventas
                 .filter(v => {
-                    const fechaVenta = new Date((v[campoFecha] || '') + 'T12:00:00');
+                    const fechaVenta = parseFechaLocal(v[campoFecha] || '');
+                    if (!fechaVenta) return false;
                     return fechaVenta.toDateString() === fecha.toDateString();
                 })
                 .reduce((total, venta) => {
@@ -958,7 +969,8 @@ class GestorReportes {
             // Calcular gastos del día
             const gastosDelDia = gastos
                 .filter(g => {
-                    const fechaGasto = new Date((g.fecha_gasto || '') + 'T12:00:00');
+                    const fechaGasto = parseFechaLocal(g.fecha_gasto || '');
+                    if (!fechaGasto) return false;
                     return fechaGasto.toDateString() === fecha.toDateString();
                 })
                 .reduce((total, gasto) => total + gasto.monto, 0);
