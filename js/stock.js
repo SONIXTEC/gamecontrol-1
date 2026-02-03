@@ -33,6 +33,7 @@ function obtenerProductos() {
 }
 
 function guardarProductos(productos) {
+    if (window.SUPABASE_ONLY) return;
     localStorage.setItem('productos_stock', JSON.stringify(productos));
 }
 
@@ -41,8 +42,10 @@ function obtenerMovimientos() {
 }
 
 function guardarMovimientos(movimientos) {
+    if (window.SUPABASE_ONLY) return;
     localStorage.setItem('movimientos_stock', JSON.stringify(movimientos));
 }
+
 
 function esMovimientoSincronizadoGenerico(mov) {
     const texto = (mov?.motivo || mov?.referencia || mov?.observaciones || '').toString().toLowerCase();
@@ -1210,7 +1213,9 @@ class GestorStock {
         if (remoteId) nuevoProducto.id = remoteId;
 
         this.productos.push(nuevoProducto);
-        guardarProductos(this.productos);
+        if (!window.SUPABASE_ONLY) {
+            guardarProductos(this.productos);
+        }
             
         // Registrar movimiento (unificado)
         this.registrarMovimiento({
@@ -1723,7 +1728,22 @@ class GestorStock {
 
                 const usuarioIdCandidate = (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null;
                 // Priorizar auth.uid para cumplir políticas RLS en Supabase
-                const usuarioId = (isUuid(authUid) ? authUid : null) || (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null);
+                const usuarioIdCandidateValid = (isUuid(authUid) ? authUid : null) || (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null);
+                let usuarioId = null;
+                if (usuarioIdCandidateValid) {
+                    try {
+                        const resUsuario = await window.databaseService.select('usuarios', {
+                            filtros: { id: usuarioIdCandidateValid },
+                            limite: 1,
+                            noCache: true
+                        });
+                        if (resUsuario?.success && Array.isArray(resUsuario.data) && resUsuario.data.length > 0) {
+                            usuarioId = usuarioIdCandidateValid;
+                        }
+                    } catch (_) {
+                        usuarioId = null;
+                    }
+                }
 
                 const metodoPagoDb = metodoPago === 'qr' ? 'digital' : metodoPago;
 

@@ -351,10 +351,10 @@ const MAX_CONNECTION_ATTEMPTS = 5;
 async function verificarEstadoConexion() {
     if (window.SUPABASE_SKIP_CONNECTION_POLL) {
         console.log('⏸️ Poll de conexión deshabilitado por configuración global');
-        return true;
+        return { success: true, conectado: true };
     }
     if (connectionCheckScheduled) {
-        return false; // ya hay una verificación en curso o programada
+        return { success: false, conectado: false, message: 'Verificación en curso' };
     }
     connectionCheckScheduled = true;
     try {
@@ -363,7 +363,7 @@ async function verificarEstadoConexion() {
         // Asegurar cliente antes de verificar
         let client = await getSupabaseClient();
         if (!client) {
-            console.warn('⚠️ Cliente no disponible; reintentando inicialización...');
+            console.log('ℹ️ Cliente no disponible; reintentando inicialización...');
             client = await getSupabaseClient();
         }
 
@@ -381,16 +381,16 @@ async function verificarEstadoConexion() {
             connectionBackoffMs = 3000; // reset backoff al éxito
             connectionCheckScheduled = false;
             
-            return true;
+            return { success: true, conectado: true };
         } else {
             connectionAttempts++;
-            console.error(`❌ Error de conexión (Intento ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS})`);
+            console.log(`ℹ️ Intento de conexión ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}`);
             
             if (connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
-                console.error('❌ Error de conexión (Intento 5/5)');
+                console.log('ℹ️ Esperando conexión a Supabase...');
                 // Detener los reintentos automáticos hasta interacción del usuario
                 connectionCheckScheduled = false;
-                return false;
+                return { success: false, conectado: false, message: 'Sin conexión' };
             }
             
             // Reintentar con backoff exponencial controlado
@@ -401,12 +401,12 @@ async function verificarEstadoConexion() {
                 connectionBackoffMs = Math.min(connectionBackoffMs * 2, connectionBackoffMax);
                 await verificarEstadoConexion();
             }, nextDelay);
-            return false;
+            return { success: false, conectado: false, message: 'Reintentando...' };
         }
     } catch (error) {
-        console.error('❌ Error verificando estado de conexión:', error);
+        console.log('ℹ️ Error verificando estado de conexión:', error.message);
         connectionCheckScheduled = false;
-        return false;
+        return { success: false, conectado: false, error: error.message };
     }
 }
 

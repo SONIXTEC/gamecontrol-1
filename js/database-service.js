@@ -134,6 +134,19 @@ class DatabaseService {
 
             if (error) {
                 console.error(`Error en select de ${tabla}:`, error);
+                
+                // Si el error es de conexión, devolver estructura vacía en lugar de lanzar
+                if (error.message.includes('Offline') || error.message.includes('network') || 
+                    error.message.includes('Failed to fetch')) {
+                    console.warn(`⚠️ Modo offline detectado para ${tabla}, devolviendo datos vacíos`);
+                    return { 
+                        success: false, 
+                        data: [], 
+                        error: error.message,
+                        offline: true 
+                    };
+                }
+                
                 throw new Error(`Error consultando ${tabla}: ${error.message}`);
             }
 
@@ -146,6 +159,20 @@ class DatabaseService {
             return { success: true, data };
         } catch (error) {
             console.error(`Error crítico en select de ${tabla}:`, error);
+            
+            // Manejo graceful de errores de conexión
+            if (error.message && (error.message.includes('Offline') || 
+                error.message.includes('network') || 
+                error.message.includes('Failed to fetch'))) {
+                console.warn(`⚠️ Excepción offline en ${tabla}`);
+                return { 
+                    success: false, 
+                    data: [], 
+                    error: error.message,
+                    offline: true 
+                };
+            }
+            
             throw error;
         }
     }

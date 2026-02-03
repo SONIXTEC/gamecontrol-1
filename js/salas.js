@@ -4589,90 +4589,82 @@ class GestorSalas {
 
         const modalHtml = `
             <div class="modal fade" id="modalTienda" tabindex="-1" data-bs-backdrop="static">
-                <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-                    <div class="modal-content border-0 shadow-lg store-modal">
+                <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+                    <div class="modal-content border-0 shadow-lg tienda-modal">
                         <style>
-                            .store-modal {
-                                background-color: #f3f4f6;
-                                width: 100%;
-                                max-width: 900px;
-                                height: 90vh;
-                                border-radius: 16px;
-                                box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-                                display: flex;
-                                flex-direction: column;
-                                overflow: hidden;
-                            }
-                            .store-modal .modal-header { background: #2da16d; color: #fff; padding: 16px 20px; }
-                            .store-modal .search-container { padding: 12px 20px; background: #fff; border-bottom: 1px solid #e5e7eb; }
-                            .store-modal .search-box input { width: 100%; padding: 10px 10px 10px 35px; border-radius: 8px; border: 1px solid #e5e7eb; background: #f9fafb; font-size: 0.95rem; }
-                            .store-modal .product-scroll-area { flex: 1; overflow-y: auto; padding: 20px; }
-                            .store-modal .category-title { grid-column: 1 / -1; margin: 10px 0 15px 0; color: #6b7280; font-weight: 700; font-size: 0.9rem; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
-                            .store-modal .product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-                            .store-modal .product-card { background: #fff; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: center; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s; border: 1px solid transparent; }
-                            .store-modal .product-card:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-color: #2da16d; }
-                            .store-modal .product-img-box { width: 100%; aspect-ratio: 1 / 1; background: #f3f4f6; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #d1d5db; overflow: hidden; }
-                            .store-modal .product-img-box img { width: 100%; height: 100%; object-fit: cover; }
-                            .store-modal .product-name { font-weight: 600; color: #1f2937; font-size: 0.9rem; margin-bottom: 4px; line-height: 1.2; height: 2.4em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-                            .store-modal .price { color: #2da16d; font-weight: 700; font-size: 1rem; margin-bottom: 2px; }
-                            .store-modal .stock { font-size: 0.75rem; color: #6b7280; margin-bottom: 10px; background: #eef2ff; padding: 2px 8px; border-radius: 10px; }
-                            .store-modal .stock-low { color: #ef4444; background: #fee2e2; }
-                            .store-modal .qty-control { display: flex; width: 100%; justify-content: space-between; align-items: center; background: #f9fafb; border-radius: 8px; padding: 4px; border: 1px solid #e5e7eb; }
-                            .store-modal .qty-btn { width: 28px; height: 28px; border: none; background: #fff; border-radius: 6px; font-weight: bold; color: #1f2937; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; }
-                            .store-modal .qty-btn:hover { background: #2da16d; color: #fff; }
-                            .store-modal .qty-val { font-weight: 600; font-size: 0.9rem; border: none; background: transparent; width: 30px; text-align: center; }
-                            .store-modal .modal-footer { background: #fff; border-top: 1px solid #e5e7eb; padding: 16px 20px; }
-                            @media (max-width: 768px) { .store-modal .product-grid { grid-template-columns: repeat(3, 1fr); } }
+                            .tienda-modal { background: #f8fafc; border-radius: 18px; overflow: hidden; }
+                            .tienda-modal .modal-header { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); color: #fff; }
+                            .tienda-toolbar { background: #fff; border-bottom: 1px solid #e5e7eb; }
+                            .tienda-toolbar .form-control, .tienda-toolbar .form-select { border-radius: 10px; }
+                            .tienda-body { display: flex; gap: 16px; padding: 16px; }
+                            .tienda-productos { flex: 1; min-width: 0; }
+                            .tienda-resumen { width: 320px; background: #fff; border-radius: 16px; padding: 16px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); position: sticky; top: 0; height: fit-content; }
+                            .tienda-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+                            .tienda-card { background: #fff; border-radius: 14px; border: 1px solid #e5e7eb; padding: 12px; display: flex; flex-direction: column; gap: 8px; transition: transform .15s ease, box-shadow .15s ease; }
+                            .tienda-card:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08); }
+                            .tienda-img { width: 100%; aspect-ratio: 1 / 1; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; color: #94a3b8; overflow: hidden; }
+                            .tienda-img img { width: 100%; height: 100%; object-fit: cover; }
+                            .tienda-nombre { font-weight: 600; color: #1f2937; font-size: 0.95rem; min-height: 2.4em; }
+                            .tienda-precio { color: #16a34a; font-weight: 700; }
+                            .tienda-stock { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; background: #e0f2fe; color: #0369a1; }
+                            .tienda-stock.low { background: #fee2e2; color: #b91c1c; }
+                            .tienda-qty { display: flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 6px; }
+                            .tienda-qty button { width: 28px; height: 28px; border: none; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.12); font-weight: 700; }
+                            .tienda-qty input { width: 48px; border: none; background: transparent; text-align: center; font-weight: 600; }
+                            .tienda-resumen h6 { font-weight: 700; }
+                            .tienda-resumen-list { max-height: 280px; overflow-y: auto; margin-top: 8px; }
+                            .tienda-resumen-item { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px dashed #e5e7eb; }
+                            .tienda-total { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
+                            .tienda-empty { padding: 24px; text-align: center; color: #94a3b8; }
+                            @media (max-width: 992px) { .tienda-body { flex-direction: column; } .tienda-resumen { width: 100%; position: static; } }
                         </style>
 
-                        <!-- Header estilo corporativo -->
-                        <div class="modal-header text-white" style="background: #2da16d; padding: 16px 20px;">
-                            <div class="d-flex align-items-center gap-3 w-100">
-                                <div class="d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2);">
+                        <div class="modal-header px-4 py-3">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="rounded-circle bg-white bg-opacity-10 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
                                     <i class="fas fa-store"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                    <h6 class="mb-0 fw-bold" style="font-size: 1.1rem;">Tienda</h6>
-                                    <small class="opacity-75" style="font-size: 0.8rem;">Venta directa sin estación</small>
+                                <div>
+                                    <h5 class="mb-0">Tienda rápida</h5>
+                                    <small class="text-white-50">Ventas sin iniciar sesión en estaciones</small>
                                 </div>
                             </div>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
 
-                        <!-- Buscador -->
-                        <div class="search-container">
-                            <div class="search-box position-relative">
-                                <i class="fas fa-search search-icon position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
-                                <input type="text" id="buscadorProductosTienda" placeholder="Buscar producto (ej. CocaCola)..."
-                                       autocomplete="off" onkeyup="window.gestorSalas.filtrarProductosModalTienda(this.value)">
-                                <button class="btn btn-link text-muted position-absolute top-50 end-0 translate-middle-y me-2 p-0 d-none text-decoration-none"
-                                        id="btnLimpiarBusquedaTienda"
-                                        onclick="document.getElementById('buscadorProductosTienda').value = ''; window.gestorSalas.filtrarProductosModalTienda(''); document.getElementById('buscadorProductosTienda').focus();"
-                                        style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-times-circle"></i>
-                                </button>
+                        <div class="tienda-toolbar px-4 py-3">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-12 col-md-7">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light"><i class="fas fa-search"></i></span>
+                                        <input type="text" id="buscadorProductosTienda" class="form-control" placeholder="Buscar producto..." autocomplete="off">
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-5">
+                                    <select id="filtroCategoriaTienda" class="form-select">
+                                        <option value="">Todas las categorías</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Lista de productos -->
-                        <div id="listaProductosTienda" class="product-scroll-area">
-                            <!-- Productos se cargan dinámicamente -->
-                        </div>
-
-                        <!-- Footer -->
-                        <div class="modal-footer bg-white border-top" style="padding: 16px 20px;">
-                            <div class="d-flex flex-column w-100">
-                                <div class="d-flex justify-content-between align-items-center mb-3" style="font-size: 0.9rem; color: #6b7280;">
-                                    <span id="resumenProductosTienda">0 items seleccionados</span>
-                                    <span class="fw-bold" style="font-size: 1.4rem; color: #1f2937;" id="totalProductosTienda">$0</span>
+                        <div class="tienda-body">
+                            <div class="tienda-productos">
+                                <div id="listaProductosTienda" class="tienda-grid"></div>
+                                <div id="tiendaNoResults" class="tienda-empty d-none">No hay productos que coincidan con la búsqueda.</div>
+                            </div>
+                            <div class="tienda-resumen">
+                                <h6 class="mb-2"><i class="fas fa-receipt me-2 text-success"></i>Resumen de venta</h6>
+                                <div id="resumenProductosTienda" class="small text-muted">0 items</div>
+                                <div id="tiendaResumenItems" class="tienda-resumen-list"></div>
+                                <div class="d-flex justify-content-between align-items-center mt-3">
+                                    <span class="text-muted">Total</span>
+                                    <span id="totalProductosTienda" class="tienda-total">$0</span>
                                 </div>
-                                <div class="d-flex gap-2">
-                                    <button type="button" class="btn btn-outline-secondary w-100" data-bs-dismiss="modal">Cancelar</button>
-                                    <button type="button" class="btn w-100 fw-bold" id="btnContinuarPagoTienda" disabled
-                                            style="background: #2da16d; color: #fff;">
-                                        <i class="fas fa-cash-register me-2"></i>Ir a pago
-                                    </button>
-                                </div>
+                                <button type="button" class="btn btn-success w-100 mt-3" id="btnContinuarPagoTienda" disabled>
+                                    <i class="fas fa-cash-register me-2"></i>Cobrar
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary w-100 mt-2" data-bs-dismiss="modal">Cerrar</button>
                             </div>
                         </div>
                     </div>
@@ -4680,17 +4672,7 @@ class GestorSalas {
             </div>
         `;
 
-        // Eliminar modales anteriores
-        const modalAnterior = document.getElementById('modalTienda');
-        if (modalAnterior) {
-            const instanciaAnterior = bootstrap.Modal.getInstance(modalAnterior);
-            if (instanciaAnterior) {
-                instanciaAnterior.hide();
-            }
-            modalAnterior.remove();
-        }
         document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
-
         const modalWrapper = document.createElement('div');
         modalWrapper.innerHTML = modalHtml;
         document.body.appendChild(modalWrapper);
@@ -4701,20 +4683,15 @@ class GestorSalas {
         const modal = new bootstrap.Modal(modalEl);
         modal.show();
 
+        const buscador = document.getElementById('buscadorProductosTienda');
+        const filtroCategoria = document.getElementById('filtroCategoriaTienda');
+        if (buscador) buscador.addEventListener('input', () => this.filtrarProductosModalTienda());
+        if (filtroCategoria) filtroCategoria.addEventListener('change', () => this.filtrarProductosModalTienda());
+
         const btnContinuar = document.getElementById('btnContinuarPagoTienda');
-        if (btnContinuar) {
-            btnContinuar.addEventListener('click', () => this.mostrarModalPagoTienda());
-        }
+        if (btnContinuar) btnContinuar.addEventListener('click', () => this.mostrarModalPagoTienda());
 
         if (modalEl) {
-            // Forzar cierre con un solo click en botones de cerrar
-            modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const inst = bootstrap.Modal.getInstance(modalEl);
-                    if (inst) inst.hide();
-                });
-            });
-
             modalEl.addEventListener('hidden.bs.modal', function () {
                 this.remove();
                 document.body.classList.remove('modal-open');
@@ -4726,6 +4703,8 @@ class GestorSalas {
     cargarProductosEnModalTienda() {
         const listaProductos = document.getElementById('listaProductosTienda');
         if (!listaProductos) return;
+
+        listaProductos.innerHTML = '<div class="tienda-empty w-100">Cargando productos...</div>';
 
         let productosDisponibles = [];
         if (window.gestorStock && typeof window.gestorStock.obtenerProductosDisponibles === 'function') {
@@ -4747,7 +4726,8 @@ class GestorSalas {
                             precio: Number(r.precio) || 0,
                             stock: Number(r.stock) || 0,
                             categoria: r.categoria || 'General',
-                            categoriaNombre: r.categoria || 'General'
+                            categoriaNombre: r.categoria || 'General',
+                            imagenUrl: r.imagen_url || r.imagen || ''
                         }));
                     this.renderizarProductosEnModalTienda(list);
                 }).catch(() => {
@@ -4764,160 +4744,76 @@ class GestorSalas {
         const listaProductos = document.getElementById('listaProductosTienda');
         if (!listaProductos) return;
 
-        if (productosDisponibles.length === 0) {
-            listaProductos.innerHTML = `
-                <div class="text-center py-4">
-                    <i class="fas fa-shopping-cart fa-2x text-muted mb-2"></i>
-                    <p class="text-muted">No hay productos disponibles en stock</p>
-                    <small class="text-muted">Configura productos en la sección de Stock</small>
-                </div>
-            `;
+        if (!Array.isArray(productosDisponibles) || productosDisponibles.length === 0) {
+            listaProductos.innerHTML = '<div class="tienda-empty w-100">No hay productos disponibles en stock.</div>';
+            const resumen = document.getElementById('tiendaResumenItems');
+            if (resumen) resumen.innerHTML = '';
+            this.actualizarTotalProductosTienda();
             return;
         }
 
-        const productosPorCategoria = productosDisponibles.reduce((acc, producto) => {
-            const categoria = producto.categoriaNombre || producto.categoria || 'Sin categoría';
-            if (!acc[categoria]) acc[categoria] = [];
-            acc[categoria].push(producto);
-            return acc;
-        }, {});
-
-        const iconosCategoria = {};
-        if (window.gestorStock && window.gestorStock.categorias) {
-            window.gestorStock.categorias.forEach(categoria => {
-                iconosCategoria[categoria.nombre] = categoria.icono;
-            });
+        const filtroCategoria = document.getElementById('filtroCategoriaTienda');
+        if (filtroCategoria) {
+            const categorias = Array.from(new Set(productosDisponibles.map(p => p.categoriaNombre || p.categoria || 'Sin categoría')));
+            filtroCategoria.innerHTML = '<option value="">Todas las categorías</option>' + categorias.map(c => `<option value="${c}">${c}</option>`).join('');
         }
 
-        const iconosDefault = {
-            'Bebidas': 'fas fa-coffee',
-            'Snacks': 'fas fa-cookie-bite',
-            'Dulces': 'fas fa-candy-cane',
-            'Accesorios': 'fas fa-gamepad',
-            'Sin categoría': 'fas fa-box'
-        };
-
-        listaProductos.innerHTML = Object.entries(productosPorCategoria).map(([categoria, productos]) => `
-            <div class="product-grid">
-                <div class="category-title">
-                    <i class="${iconosCategoria[categoria] || iconosDefault[categoria] || 'fas fa-box'}"></i>
-                    ${categoria}
+        listaProductos.innerHTML = productosDisponibles.map(producto => {
+            const stockClass = Number(producto.stock) <= 5 ? 'tienda-stock low' : 'tienda-stock';
+            return `
+                <div class="tienda-card tienda-producto-item" data-nombre="${producto.nombre.toLowerCase()}" data-categoria="${(producto.categoriaNombre || producto.categoria || 'Sin categoría').toLowerCase()}">
+                    <div class="tienda-img">
+                        ${producto.imagenUrl ? `<img src="${producto.imagenUrl}" alt="${producto.nombre}">` : `<i class="fas fa-image"></i>`}
+                    </div>
+                    <div class="tienda-nombre">${producto.nombre}</div>
+                    <div class="tienda-precio">${formatearMoneda(producto.precio)}</div>
+                    <div class="${stockClass}">Stock: ${producto.stock}</div>
+                    <div class="tienda-qty">
+                        <button type="button" onclick="let inp=this.nextElementSibling; let v=parseInt(inp.value)||0; if(v>0){inp.value=v-1; window.gestorSalas.actualizarTotalProductosTienda();}">-</button>
+                        <input type="number" min="0" max="${producto.stock}" value="0"
+                               data-producto-id="${producto.id}"
+                               data-precio="${producto.precio}"
+                               data-nombre="${producto.nombre}"
+                               data-stock="${producto.stock}"
+                               onchange="window.gestorSalas.actualizarTotalProductosTienda()"
+                               oninput="window.gestorSalas.validarCantidadProducto(this); window.gestorSalas.actualizarTotalProductosTienda()">
+                        <button type="button" onclick="let inp=this.previousElementSibling; let v=parseInt(inp.value)||0; let max=parseInt(inp.max)||999; if(v<max){inp.value=v+1; window.gestorSalas.actualizarTotalProductosTienda();}">+</button>
+                    </div>
                 </div>
-                ${productos.map(producto => {
-                    const stockClass = Number(producto.stock) <= 5 ? 'stock stock-low' : 'stock';
-                    return `
-                        <div class="product-card producto-item-tienda" data-nombre="${producto.nombre.toLowerCase()}">
-                            <div class="product-img-box">
-                                ${producto.imagenUrl ? `<img src="${producto.imagenUrl}" alt="${producto.nombre}">` : `<i class="fas fa-image"></i>`}
-                            </div>
-                            <div class="product-name">${producto.nombre}</div>
-                            <div class="price">${formatearMoneda(producto.precio)}</div>
-                            <div class="${stockClass}">Stock: ${producto.stock}</div>
-                            <div class="qty-control">
-                                <button class="qty-btn" type="button" onclick="let inp=this.nextElementSibling; let v=parseInt(inp.value)||0; if(v>0){inp.value=v-1; window.gestorSalas.actualizarTotalProductosTienda();}">-</button>
-                                <input type="number" class="qty-val" min="0" max="${producto.stock}" value="0"
-                                       data-producto-id="${producto.id}"
-                                       data-precio="${producto.precio}"
-                                       data-nombre="${producto.nombre}"
-                                       data-stock="${producto.stock}"
-                                       onchange="window.gestorSalas.actualizarTotalProductosTienda()"
-                                       oninput="window.gestorSalas.validarCantidadProducto(this); window.gestorSalas.actualizarTotalProductosTienda()">
-                                <button class="qty-btn" type="button" onclick="let inp=this.previousElementSibling; let v=parseInt(inp.value)||0; let max=parseInt(inp.max)||999; if(v<max){inp.value=v+1; window.gestorSalas.actualizarTotalProductosTienda();}">+</button>
-                            </div>
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-        `).join('');
+            `;
+        }).join('');
+
+        this.actualizarTotalProductosTienda();
+        this.filtrarProductosModalTienda();
     }
 
-    filtrarProductosModalTienda(texto) {
-        const busqueda = texto.toLowerCase().trim();
-        const items = document.querySelectorAll('.producto-item-tienda');
-        const categorias = document.querySelectorAll('.categoria-container-tienda');
-        const btnLimpiar = document.getElementById('btnLimpiarBusquedaTienda');
-        const listaProductos = document.getElementById('listaProductosTienda');
+    filtrarProductosModalTienda() {
+        const buscador = document.getElementById('buscadorProductosTienda');
+        const filtroCategoria = document.getElementById('filtroCategoriaTienda');
+        const texto = (buscador?.value || '').toLowerCase().trim();
+        const categoria = (filtroCategoria?.value || '').toLowerCase().trim();
 
-        if (btnLimpiar) {
-            if (busqueda.length > 0) {
-                btnLimpiar.classList.remove('d-none');
-                btnLimpiar.style.display = 'flex';
-            } else {
-                btnLimpiar.classList.add('d-none');
-                btnLimpiar.style.display = 'none';
-            }
-        }
+        const items = document.querySelectorAll('.tienda-producto-item');
+        let visibles = 0;
 
-        let totalVisibles = 0;
         items.forEach(item => {
-            const nombre = item.dataset.nombre;
-            if (nombre.includes(busqueda)) {
+            const nombre = item.dataset.nombre || '';
+            const cat = item.dataset.categoria || '';
+            const coincideTexto = !texto || nombre.includes(texto);
+            const coincideCategoria = !categoria || cat === categoria.toLowerCase();
+            if (coincideTexto && coincideCategoria) {
                 item.classList.remove('d-none');
-                totalVisibles++;
+                visibles++;
             } else {
                 item.classList.add('d-none');
             }
         });
 
-        categorias.forEach(cat => {
-            const itemsVisibles = cat.querySelectorAll('.producto-item-tienda:not(.d-none)');
-            if (itemsVisibles.length === 0) {
-                cat.classList.add('d-none');
-            } else {
-                cat.classList.remove('d-none');
-            }
-        });
-
-        let noResultsMsg = document.getElementById('noResultsMsgTienda');
-        if (totalVisibles === 0 && busqueda.length > 0) {
-            if (!noResultsMsg) {
-                noResultsMsg = document.createElement('div');
-                noResultsMsg.id = 'noResultsMsgTienda';
-                noResultsMsg.className = 'text-center py-5 text-muted';
-                noResultsMsg.innerHTML = `
-                    <div class="bg-white rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 64px; height: 64px;">
-                        <i class="fas fa-search fa-lg text-secondary opacity-50"></i>
-                    </div>
-                    <h6 class="fw-bold text-dark mb-1">No encontrado</h6>
-                    <p class="small text-muted mb-0">No hay productos que coincidan con "${texto}"</p>
-                `;
-                listaProductos.appendChild(noResultsMsg);
-            } else {
-                noResultsMsg.querySelector('p').textContent = `No hay productos que coincidan con "${texto}"`;
-                noResultsMsg.classList.remove('d-none');
-            }
-        } else if (noResultsMsg) {
-            noResultsMsg.classList.add('d-none');
-        }
+        const noResults = document.getElementById('tiendaNoResults');
+        if (noResults) noResults.classList.toggle('d-none', visibles > 0);
     }
 
-    actualizarTotalProductosTienda() {
-        const inputs = document.querySelectorAll('#listaProductosTienda input[type="number"]');
-        let total = 0;
-        let cantidadItems = 0;
-        let totalUnidades = 0;
-
-        inputs.forEach(input => {
-            const cantidad = parseInt(input.value) || 0;
-            const precio = parseFloat(input.dataset.precio) || 0;
-            total += cantidad * precio;
-            totalUnidades += cantidad;
-            if (cantidad > 0) cantidadItems++;
-        });
-
-        const totalElement = document.getElementById('totalProductosTienda');
-        if (totalElement) totalElement.textContent = formatearMoneda(total);
-
-        const resumenElement = document.getElementById('resumenProductosTienda');
-        if (resumenElement) {
-            resumenElement.textContent = cantidadItems === 0 ? '0 items' : `${totalUnidades} items`;
-        }
-
-        const btnContinuar = document.getElementById('btnContinuarPagoTienda');
-        if (btnContinuar) btnContinuar.disabled = cantidadItems === 0;
-    }
-
-    mostrarModalPagoTienda() {
+    obtenerItemsVentaTienda() {
         const inputs = document.querySelectorAll('#listaProductosTienda input[type="number"]');
         const items = [];
         let totalBruto = 0;
@@ -4928,17 +4824,48 @@ class GestorSalas {
                 const precio = parseFloat(input.dataset.precio) || 0;
                 const productoId = input.dataset.productoId;
                 const nombre = input.dataset.nombre;
-                items.push({
-                    productoId,
-                    nombre,
-                    cantidad,
-                    precioUnitario: precio
-                });
+                items.push({ productoId, nombre, cantidad, precioUnitario: precio });
                 totalBruto += cantidad * precio;
             }
         });
 
-        if (items.length === 0) {
+        return { items, totalBruto };
+    }
+
+    actualizarTotalProductosTienda() {
+        const { items, totalBruto } = this.obtenerItemsVentaTienda();
+        const totalUnidades = items.reduce((sum, i) => sum + i.cantidad, 0);
+
+        const totalElement = document.getElementById('totalProductosTienda');
+        if (totalElement) totalElement.textContent = formatearMoneda(totalBruto);
+
+        const resumenElement = document.getElementById('resumenProductosTienda');
+        if (resumenElement) resumenElement.textContent = totalUnidades === 0 ? '0 items' : `${totalUnidades} items`;
+
+        const resumenItems = document.getElementById('tiendaResumenItems');
+        if (resumenItems) {
+            if (items.length === 0) {
+                resumenItems.innerHTML = '<div class="tienda-empty">Agrega productos para cobrar.</div>';
+            } else {
+                resumenItems.innerHTML = items.map(item => `
+                    <div class="tienda-resumen-item">
+                        <div>
+                            <div class="fw-semibold">${item.nombre}</div>
+                            <div class="small text-muted">${item.cantidad} x ${formatearMoneda(item.precioUnitario)}</div>
+                        </div>
+                        <div class="fw-semibold">${formatearMoneda(item.cantidad * item.precioUnitario)}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        const btnContinuar = document.getElementById('btnContinuarPagoTienda');
+        if (btnContinuar) btnContinuar.disabled = items.length === 0;
+    }
+
+    mostrarModalPagoTienda() {
+        const { items, totalBruto } = this.obtenerItemsVentaTienda();
+        if (!items.length) {
             mostrarNotificacion('Selecciona al menos un producto', 'warning');
             return;
         }
@@ -4953,7 +4880,7 @@ class GestorSalas {
                 <div class="modal-dialog modal-dialog-centered modal-md">
                     <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
                         <div class="modal-header bg-dark text-white p-3 border-0">
-                            <h6 class="mb-0 fw-bold"><i class="fas fa-credit-card me-2"></i>Pago Tienda</h6>
+                            <h6 class="mb-0 fw-bold"><i class="fas fa-credit-card me-2"></i>Pago tienda</h6>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body bg-light p-3">
@@ -4961,6 +4888,10 @@ class GestorSalas {
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="text-muted">Total bruto</span>
                                     <span class="fw-bold">${formatearMoneda(totalBruto)}</span>
+                                </div>
+                                <div class="mt-2">
+                                    <label class="form-label small text-muted">Cliente (opcional)</label>
+                                    <input type="text" class="form-control" id="clienteTienda" placeholder="Nombre del cliente">
                                 </div>
                                 <div class="mt-2">
                                     <label class="form-label small text-muted">Descuento</label>
@@ -5003,7 +4934,6 @@ class GestorSalas {
                                 </div>
                             </div>
 
-                            <!-- Detalles de Transferencia (Oculto por defecto) -->
                             <div id="detallesTransferenciaTienda" class="mt-3 d-none animate__animated animate__fadeIn">
                                 <div class="bg-light p-3 rounded-3 border border-info bg-opacity-10">
                                     <div class="d-flex align-items-center mb-2">
@@ -5052,9 +4982,7 @@ class GestorSalas {
         }
 
         const btnConfirmar = document.getElementById('btnConfirmarVentaTienda');
-        if (btnConfirmar) {
-            btnConfirmar.addEventListener('click', () => this.confirmarVentaTienda());
-        }
+        if (btnConfirmar) btnConfirmar.addEventListener('click', () => this.confirmarVentaTienda());
 
         this.configurarEventosMetodoPagoTienda();
 
@@ -5083,10 +5011,7 @@ class GestorSalas {
             }
         };
 
-        radiosPago.forEach(radio => {
-            radio.addEventListener('change', actualizarUI);
-        });
-
+        radiosPago.forEach(radio => radio.addEventListener('change', actualizarUI));
         actualizarUI();
     }
 
@@ -5106,6 +5031,7 @@ class GestorSalas {
 
         const descuento = Math.max(0, Number(document.getElementById('descuentoTienda')?.value) || 0);
         const metodoPago = document.querySelector('input[name="metodoPagoTienda"]:checked')?.value || 'efectivo';
+        const cliente = (document.getElementById('clienteTienda')?.value || '').trim();
         const totalBruto = Number(this.ventaTiendaActual.totalBruto) || 0;
 
         if (descuento > totalBruto) {
@@ -5121,7 +5047,8 @@ class GestorSalas {
         const resultado = await window.gestorStock.registrarVentaTienda({
             items: this.ventaTiendaActual.items,
             descuento,
-            metodoPago
+            metodoPago,
+            cliente: cliente || null
         });
 
         if (!resultado || !resultado.ok) {
@@ -5132,6 +5059,10 @@ class GestorSalas {
 
         const totalFinal = Math.max(0, totalBruto - descuento);
         mostrarNotificacion(`Venta registrada. Total cobrado: ${formatearMoneda(totalFinal)}`, 'success');
+
+        window.dispatchEvent(new CustomEvent('ventaTiendaRegistrada', {
+            detail: { total: totalFinal, metodoPago, cliente: cliente || 'Cliente tienda' }
+        }));
 
         const modalPago = bootstrap.Modal.getInstance(document.getElementById('modalPagoTienda'));
         if (modalPago) modalPago.hide();

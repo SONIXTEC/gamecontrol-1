@@ -81,15 +81,16 @@ class DashboardManager {
         }
         
         this.cargandoDatos = true;
+        let isOffline = false;
         
         try {
             console.log('📥 Cargando datos desde Supabase...');
             
-            // Cargar datos en paralelo para mejor rendimiento
-            const [sesionesResult, gastosResult, salasResult, productosResult, configResult] = await Promise.all([
+            // Cargar datos en paralelo con manejo de errores individual
+            const resultados = await Promise.allSettled([
                 window.databaseService.select('sesiones', {
                     ordenPor: { campo: 'fecha_inicio', direccion: 'desc' },
-                    limite: 100 // Limitar para rendimiento
+                    limite: 100
                 }),
                 window.databaseService.select('gastos', {
                     ordenPor: { campo: 'fecha_gasto', direccion: 'desc' },
@@ -103,6 +104,23 @@ class DashboardManager {
                 }),
                 window.databaseService.obtenerConfiguracion()
             ]);
+
+            // Procesar resultados con manejo de errores
+            const [sesionesResult, gastosResult, salasResult, productosResult, configResult] = resultados.map(
+                (resultado, index) => {
+                    if (resultado.status === 'fulfilled') {
+                        const value = resultado.value;
+                        if (value && value.offline) {
+                            isOffline = true;
+                        }
+                        return value;
+                    } else {
+                        console.warn(`⚠️ Error en consulta ${index}:`, resultado.reason);
+                        isOffline = true;
+                        return { success: false, data: [], offline: true };
+                    }
+                }
+            );
 
             // Procesar resultados
             this.datos.sesiones = sesionesResult.success ? (sesionesResult.data || []) : [];
@@ -121,8 +139,17 @@ class DashboardManager {
                 sesiones: this.datos.sesiones.length,
                 gastos: this.datos.gastos.length,
                 salas: this.datos.salas.length,
-                productos: this.datos.productos.length
+                productos: this.datos.productos.length,
+                offline: isOffline
             });
+
+            // Mostrar banner de modo offline si es necesario
+            if (isOffline) {
+                this.mostrarModoOffline();
+            }
+
+            // Renderizar el dashboard
+            this.renderizarDashboard();
 
         } catch (error) {
             console.error('❌ Error cargando datos:', error);
@@ -139,6 +166,31 @@ class DashboardManager {
             this.normalizarDatos();
         } finally {
             this.cargandoDatos = false;
+        }
+    }
+
+    // ===== RENDERIZAR DASHBOARD COMPLETO =====
+    renderizarDashboard() {
+        try {
+            console.log('🎨 Renderizando dashboard...');
+            
+            // Actualizar todas las métricas
+            this.actualizarMetricas();
+            
+            // Actualizar gráficos (solo si no existen ya)
+            if (!this.charts.ingresos || !this.charts.distribucion) {
+                this.inicializarGraficos();
+            }
+            
+            // Actualizar tablas y feeds
+            this.actualizarSesionesActivas();
+            this.actualizarActividadReciente();
+            this.actualizarAlertas();
+            this.actualizarEstadoStock();
+            
+            console.log('✅ Dashboard renderizado');
+        } catch (error) {
+            console.error('❌ Error renderizando dashboard:', error);
         }
     }
 
@@ -1177,6 +1229,68 @@ class DashboardManager {
         } else {
             console.log(`${tipo.toUpperCase()}: ${mensaje}`);
         }
+    }
+
+    mostrarModoOffline() {
+        console.warn('⚠️ Modo Offline Detectado');
+        
+        // Crear banner de modo offline si no existe
+        let banner = document.getElementById('offline-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'offline-banner';
+            banner.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                color: white;
+                padding: 12px 20px;
+                text-align: center;
+                z-index: 9999;
+                font-weight: 600;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+                animation: slideDown 0.3s ease-out;
+            `;
+            banner.innerHTML = `
+                <i class="fas fa-wifi-slash me-2"></i>
+                Modo Offline - Mostrando datos de demostración
+                <button onclick="this.parentElement.remove()" style="
+                    background: rgba(255, 255, 255, 0.2);
+                    border: none;
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 4px;
+                    margin-left: 15px;
+                    cursor: pointer;
+                    font-weight: 600;
+                ">Cerrar</button>
+            `;
+            
+            // Agregar animación
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes slideDown {
+                    from {
+                        transform: translateY(-100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+            document.body.prepend(banner);
+            
+            // Ajustar padding del body para el banner
+            document.body.style.paddingTop = '50px';
+        }
+        
+        // Mostrar notificación adicional
+        this.mostrarNotificacion('Dashboard en modo offline - Datos limitados', 'warning');
     }
 
     // ===== EVENT LISTENERS =====

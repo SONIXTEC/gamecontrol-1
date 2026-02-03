@@ -407,7 +407,8 @@ async function verificarConexionSupabase() {
             return true;
         }
         
-        console.warn('⚠️ No hay conexión a Supabase - continuando sin BD online');
+        // No mostrar warning si hay problema de conexión, solo log silencioso
+        console.log('ℹ️ Modo offline - esperando conexión a Supabase');
         return false; // No lanzar error, permitir continuar
 
     } catch (error) {

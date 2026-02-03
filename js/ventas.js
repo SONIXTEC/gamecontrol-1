@@ -51,6 +51,7 @@ function formatearMoneda(cantidad) {
     }).format(cantidad);
 }
 
+
 function formatearFecha(fecha) {
     return new Date(fecha).toLocaleDateString('es-ES', {
         day: '2-digit',
@@ -141,6 +142,10 @@ class GestorVentas {
             sala: '',
             metodoPago: ''
         };
+        // Paginación
+        this.paginaActual = 1;
+        this.registrosPorPagina = 20;
+        this.totalRegistros = 0;
         this.init();
     }
 
@@ -178,12 +183,12 @@ class GestorVentas {
                 try {
                     let sesionesMapeadas = [];
 
-                    // Intentar carga robusta: traer últimas 100 sesiones y filtrar en memoria
+                    // Intentar carga robusta: traer últimas 1000 sesiones y filtrar en memoria
                     // Esto evita problemas si el flag 'finalizada' o el estado no coinciden exactamente en la query
                     const resSesiones = await window.databaseService.select('sesiones', {
                         select: '*, usuario:usuarios(nombre)', 
                         ordenPor: { campo: 'fecha_fin', direccion: 'desc' }, 
-                        limite: 100,
+                        limite: 1000,
                         noCache: true 
                     });
                     
@@ -252,7 +257,7 @@ class GestorVentas {
                     try {
                         const resVentas = await window.databaseService.select('ventas', {
                             ordenPor: { campo: 'fecha_cierre', direccion: 'desc' },
-                            limite: 100,
+                            limite: 1000,
                             noCache: true
                         });
 
@@ -605,10 +610,12 @@ class GestorVentas {
 
         // Filtrar por período o rango personalizado
         if (this.filtrosActivos.periodo === 'rango' && this.filtrosActivos.fechaInicio && this.filtrosActivos.fechaFin) {
-            const inicio = new Date(this.filtrosActivos.fechaInicio);
-            inicio.setHours(0, 0, 0, 0);
-            const fin = new Date(this.filtrosActivos.fechaFin);
-            fin.setHours(23, 59, 59, 999);
+            // Crear fechas en zona horaria local para evitar desfases
+            const [añoInicio, mesInicio, diaInicio] = this.filtrosActivos.fechaInicio.split('-').map(Number);
+            const inicio = new Date(añoInicio, mesInicio - 1, diaInicio, 0, 0, 0, 0);
+            
+            const [añoFin, mesFin, diaFin] = this.filtrosActivos.fechaFin.split('-').map(Number);
+            const fin = new Date(añoFin, mesFin - 1, diaFin, 23, 59, 59, 999);
             
             sesiones = sesiones.filter(sesion => {
                 const fechaSesion = this.obtenerFechaReferenciaSesion(sesion);
@@ -648,7 +655,12 @@ class GestorVentas {
             });
         }
 
-        return sesiones.sort((a, b) => this.obtenerFechaReferenciaSesion(b) - this.obtenerFechaReferenciaSesion(a));
+        const sesionesFiltradas = sesiones.sort((a, b) => this.obtenerFechaReferenciaSesion(b) - this.obtenerFechaReferenciaSesion(a));
+        
+        // Actualizar total de registros para paginación
+        this.totalRegistros = sesionesFiltradas.length;
+        
+        return sesionesFiltradas;
     }
 
     actualizarEstadisticas() {
@@ -680,28 +692,171 @@ class GestorVentas {
     }
 
     calcularCambiosPeriodo() {
-        // Esta función calcula los cambios respecto al período anterior
-        // Por simplicidad, mostraremos valores estáticos por ahora
+        // Calcular estadísticas del período actual
+        const sesionesActuales = this.aplicarFiltros();
+        const totalVentasActual = sesionesActuales.reduce((total, sesion) => total + this.calcularTotalSesion(sesion), 0);
+        const transaccionesActual = sesionesActuales.length;
+        const ticketPromedioActual = transaccionesActual > 0 ? totalVentasActual / transaccionesActual : 0;
+        const clientesUnicosActual = new Set(sesionesActuales.map(s => s.cliente)).size;
+
+        // Calcular período anterior
+        const { fechaInicio: fechaInicioAnterior, fechaFin: fechaFinAnterior } = this.obtenerPeriodoAnterior();
+        
+        // Obtener sesiones del período anterior
+        const sesionesPrevias = this.obtenerSesionesFinalizadas().filter(sesion => {
+            const fechaSesion = this.obtenerFechaReferenciaSesion(sesion);
+            return fechaSesion >= fechaInicioAnterior && fechaSesion <= fechaFinAnterior;
+        });
+
+        // Calcular estadísticas del período anterior
+        const totalVentasPrevio = sesionesPrevias.reduce((total, sesion) => total + this.calcularTotalSesion(sesion), 0);
+        const transaccionesPrevio = sesionesPrevias.length;
+        const ticketPromedioPrevio = transaccionesPrevio > 0 ? totalVentasPrevio / transaccionesPrevio : 0;
+        const clientesUnicosPrevio = new Set(sesionesPrevias.map(s => s.cliente)).size;
+
+        // Calcular cambios porcentuales
+        const calcularCambio = (actual, previo) => {
+            if (previo === 0) return actual > 0 ? 100 : 0;
+            return ((actual - previo) / previo) * 100;
+        };
+
         const indicadores = [
-            { cambio: 8, tipo: 'porcentaje' },
-            { cambio: 5, tipo: 'porcentaje' },
-            { cambio: 3, tipo: 'porcentaje' },
-            { cambio: 2, tipo: 'absoluto' }
+            { 
+                cambio: calcularCambio(totalVentasActual, totalVentasPrevio), 
+                tipo: 'porcentaje',
+                texto: this.obtenerTextoComparacion()
+            },
+            { 
+                cambio: calcularCambio(transaccionesActual, transaccionesPrevio), 
+                tipo: 'porcentaje',
+                texto: this.obtenerTextoComparacion()
+            },
+            { 
+                cambio: calcularCambio(ticketPromedioActual, ticketPromedioPrevio), 
+                tipo: 'porcentaje',
+                texto: this.obtenerTextoComparacion()
+            },
+            { 
+                cambio: clientesUnicosActual - clientesUnicosPrevio, 
+                tipo: 'absoluto',
+                texto: this.obtenerTextoComparacion(true)
+            }
         ];
 
         const elementos = document.querySelectorAll('.dashboard-card p');
         elementos.forEach((elemento, index) => {
             if (indicadores[index]) {
-                const { cambio, tipo } = indicadores[index];
+                const { cambio, tipo, texto } = indicadores[index];
+                const cambioRedondeado = tipo === 'porcentaje' ? Math.round(cambio * 10) / 10 : Math.round(cambio);
                 const icono = cambio >= 0 ? 'fas fa-arrow-up' : 'fas fa-arrow-down';
                 const clase = cambio >= 0 ? 'text-success' : 'text-danger';
                 const simbolo = tipo === 'porcentaje' ? '%' : '';
-                const texto = tipo === 'porcentaje' ? 'desde ayer' : 'más que ayer';
                 
-                elemento.innerHTML = `<i class="${icono}"></i> ${Math.abs(cambio)}${simbolo} ${texto}`;
-                elemento.className = `${clase} mb-0`;
+                if (cambio === 0) {
+                    elemento.innerHTML = `<i class="fas fa-minus text-muted"></i> Sin cambios ${texto}`;
+                    elemento.className = 'text-muted mb-0';
+                } else {
+                    elemento.innerHTML = `<i class="${icono}"></i> ${Math.abs(cambioRedondeado)}${simbolo} ${texto}`;
+                    elemento.className = `${clase} mb-0`;
+                }
             }
         });
+    }
+
+    obtenerPeriodoAnterior() {
+        const periodo = this.filtrosActivos.periodo;
+        let fechaInicioAnterior, fechaFinAnterior;
+
+        if (periodo === 'rango' && this.filtrosActivos.fechaInicio && this.filtrosActivos.fechaFin) {
+            // Para rango personalizado, calcular el mismo rango hacia atrás
+            const inicio = new Date(this.filtrosActivos.fechaInicio);
+            const fin = new Date(this.filtrosActivos.fechaFin);
+            const duracion = fin - inicio;
+            
+            fechaFinAnterior = new Date(inicio.getTime() - 1);
+            fechaInicioAnterior = new Date(fechaFinAnterior.getTime() - duracion);
+        } else {
+            // Para períodos predefinidos
+            const hoy = new Date();
+            
+            switch (periodo) {
+                case 'hoy':
+                    // Comparar con ayer
+                    fechaInicioAnterior = new Date(hoy);
+                    fechaInicioAnterior.setDate(fechaInicioAnterior.getDate() - 1);
+                    fechaInicioAnterior.setHours(0, 0, 0, 0);
+                    fechaFinAnterior = new Date(fechaInicioAnterior);
+                    fechaFinAnterior.setHours(23, 59, 59, 999);
+                    break;
+                    
+                case 'ayer':
+                    // Comparar con anteayer
+                    fechaInicioAnterior = new Date(hoy);
+                    fechaInicioAnterior.setDate(fechaInicioAnterior.getDate() - 2);
+                    fechaInicioAnterior.setHours(0, 0, 0, 0);
+                    fechaFinAnterior = new Date(fechaInicioAnterior);
+                    fechaFinAnterior.setHours(23, 59, 59, 999);
+                    break;
+                    
+                case 'semana':
+                    // Comparar con semana anterior
+                    fechaInicioAnterior = new Date(hoy);
+                    fechaInicioAnterior.setDate(fechaInicioAnterior.getDate() - fechaInicioAnterior.getDay() - 7);
+                    fechaInicioAnterior.setHours(0, 0, 0, 0);
+                    fechaFinAnterior = new Date(fechaInicioAnterior);
+                    fechaFinAnterior.setDate(fechaFinAnterior.getDate() + 6);
+                    fechaFinAnterior.setHours(23, 59, 59, 999);
+                    break;
+                    
+                case 'mes':
+                    // Comparar con mes anterior
+                    fechaInicioAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+                    fechaFinAnterior = new Date(hoy.getFullYear(), hoy.getMonth(), 0, 23, 59, 59, 999);
+                    break;
+                    
+                case 'año':
+                    // Comparar con año anterior
+                    fechaInicioAnterior = new Date(hoy.getFullYear() - 1, 0, 1);
+                    fechaFinAnterior = new Date(hoy.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+                    break;
+                    
+                default:
+                    // Default: comparar con ayer
+                    fechaInicioAnterior = new Date(hoy);
+                    fechaInicioAnterior.setDate(fechaInicioAnterior.getDate() - 1);
+                    fechaInicioAnterior.setHours(0, 0, 0, 0);
+                    fechaFinAnterior = new Date(fechaInicioAnterior);
+                    fechaFinAnterior.setHours(23, 59, 59, 999);
+            }
+        }
+
+        return { fechaInicio: fechaInicioAnterior, fechaFin: fechaFinAnterior };
+    }
+
+    obtenerTextoComparacion(esAbsoluto = false) {
+        const periodo = this.filtrosActivos.periodo;
+        
+        if (esAbsoluto) {
+            switch (periodo) {
+                case 'hoy': return 'vs ayer';
+                case 'ayer': return 'vs anteayer';
+                case 'semana': return 'vs semana anterior';
+                case 'mes': return 'vs mes anterior';
+                case 'año': return 'vs año anterior';
+                case 'rango': return 'vs período anterior';
+                default: return 'vs ayer';
+            }
+        } else {
+            switch (periodo) {
+                case 'hoy': return 'desde ayer';
+                case 'ayer': return 'desde anteayer';
+                case 'semana': return 'vs semana anterior';
+                case 'mes': return 'vs mes anterior';
+                case 'año': return 'vs año anterior';
+                case 'rango': return 'vs período anterior';
+                default: return 'desde ayer';
+            }
+        }
     }
 
     crearHTMLCardMobile(sesion) {
@@ -750,28 +905,46 @@ class GestorVentas {
         const tbody = document.getElementById('tablaVentasBody');
         const containerMobile = document.getElementById('contenedorVentasMobile');
         
-        const sesiones = this.aplicarFiltros();
+        const todasLasSesiones = this.aplicarFiltros();
+        
+        // Calcular paginación
+        const totalPaginas = Math.ceil(todasLasSesiones.length / this.registrosPorPagina);
+        
+        // Ajustar página actual si está fuera de rango
+        if (this.paginaActual > totalPaginas && totalPaginas > 0) {
+            this.paginaActual = totalPaginas;
+        }
+        if (this.paginaActual < 1) {
+            this.paginaActual = 1;
+        }
+        
+        // Obtener sesiones de la página actual
+        const inicio = (this.paginaActual - 1) * this.registrosPorPagina;
+        const fin = inicio + this.registrosPorPagina;
+        const sesiones = todasLasSesiones.slice(inicio, fin);
 
         // --- MOBILE RENDERER ---
         if (containerMobile) {
-            if (sesiones.length === 0) {
+            if (todasLasSesiones.length === 0) {
                  containerMobile.innerHTML = `
                     <div class="text-center py-5">
                         <i class="fas fa-inbox fa-3x text-secondary mb-3 opacity-50"></i>
                         <p class="text-white-50">No hay ventas registradas</p>
                     </div>`;
-                 this.actualizarInfoPaginacion(0);
+                 this.actualizarInfoPaginacion(0, 0, 0);
+                 this.actualizarControlesPaginacion(0);
                  return;
             }
             containerMobile.innerHTML = sesiones.map(s => this.crearHTMLCardMobile(s)).join('');
-            this.actualizarInfoPaginacion(sesiones.length);
+            this.actualizarInfoPaginacion(todasLasSesiones.length, inicio + 1, Math.min(fin, todasLasSesiones.length));
+            this.actualizarControlesPaginacion(totalPaginas);
             return;
         }
         // --- DESKTOP RENDERER ---
 
         if (!tbody) return;
 
-        if (sesiones.length === 0) {
+        if (todasLasSesiones.length === 0) {
             if (this.lastLoadError) {
                 tbody.innerHTML = `
                     <tr>
@@ -784,7 +957,8 @@ class GestorVentas {
                         </td>
                     </tr>
                 `;
-                this.actualizarInfoPaginacion(0);
+                this.actualizarInfoPaginacion(0, 0, 0);
+                this.actualizarControlesPaginacion(0);
                 return;
             }
             tbody.innerHTML = `
@@ -796,7 +970,8 @@ class GestorVentas {
                 </tr>
             `;
             // Actualizar paginación con 0 registros
-            this.actualizarInfoPaginacion(0);
+            this.actualizarInfoPaginacion(0, 0, 0);
+            this.actualizarControlesPaginacion(0);
             return;
         }
 
@@ -872,7 +1047,8 @@ class GestorVentas {
         }).join('');
 
         // Actualizar información de paginación
-        this.actualizarInfoPaginacion(sesiones.length);
+        this.actualizarInfoPaginacion(todasLasSesiones.length, inicio + 1, Math.min(fin, todasLasSesiones.length));
+        this.actualizarControlesPaginacion(totalPaginas);
     }
 
     async eliminarRegistro(sesionId) {
@@ -1183,10 +1359,90 @@ class GestorVentas {
         return clases[metodo] || 'metodo-efectivo';
     }
 
-    actualizarInfoPaginacion(total) {
+    actualizarInfoPaginacion(total, desde, hasta) {
         const infoPaginacion = document.getElementById('info-paginacion');
         if (infoPaginacion) {
-            infoPaginacion.textContent = `Mostrando ${total} registro${total !== 1 ? 's' : ''}`;
+            if (total === 0) {
+                infoPaginacion.textContent = 'Mostrando 0 registros';
+            } else {
+                infoPaginacion.textContent = `Mostrando ${desde} - ${hasta} de ${total} registro${total !== 1 ? 's' : ''}`;
+            }
+        }
+    }
+
+    actualizarControlesPaginacion(totalPaginas) {
+        const paginacion = document.querySelector('.pagination');
+        if (!paginacion) return;
+
+        if (totalPaginas <= 1) {
+            paginacion.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+
+        // Botón Anterior
+        html += `
+            <li class="page-item ${this.paginaActual === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="window.gestorVentas.cambiarPagina(${this.paginaActual - 1}); return false;">Anterior</a>
+            </li>
+        `;
+
+        // Páginas
+        const maxBotones = 5;
+        let inicio = Math.max(1, this.paginaActual - Math.floor(maxBotones / 2));
+        let fin = Math.min(totalPaginas, inicio + maxBotones - 1);
+        
+        if (fin - inicio < maxBotones - 1) {
+            inicio = Math.max(1, fin - maxBotones + 1);
+        }
+
+        if (inicio > 1) {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="window.gestorVentas.cambiarPagina(1); return false;">1</a></li>`;
+            if (inicio > 2) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+        }
+
+        for (let i = inicio; i <= fin; i++) {
+            html += `
+                <li class="page-item ${i === this.paginaActual ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="window.gestorVentas.cambiarPagina(${i}); return false;">${i}</a>
+                </li>
+            `;
+        }
+
+        if (fin < totalPaginas) {
+            if (fin < totalPaginas - 1) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="window.gestorVentas.cambiarPagina(${totalPaginas}); return false;">${totalPaginas}</a></li>`;
+        }
+
+        // Botón Siguiente
+        html += `
+            <li class="page-item ${this.paginaActual === totalPaginas ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="window.gestorVentas.cambiarPagina(${this.paginaActual + 1}); return false;">Siguiente</a>
+            </li>
+        `;
+
+        paginacion.innerHTML = html;
+    }
+
+    cambiarPagina(nuevaPagina) {
+        const totalPaginas = Math.ceil(this.totalRegistros / this.registrosPorPagina);
+        
+        if (nuevaPagina < 1 || nuevaPagina > totalPaginas) {
+            return;
+        }
+        
+        this.paginaActual = nuevaPagina;
+        this.actualizarHistorialVentas();
+        
+        // Scroll al inicio de la tabla
+        const tabla = document.querySelector('.table-responsive');
+        if (tabla) {
+            tabla.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
 
@@ -1305,6 +1561,8 @@ class GestorVentas {
     }
 
     actualizarVista() {
+        // Resetear a la primera página al cambiar filtros
+        this.paginaActual = 1;
         this.actualizarEstadisticas();
         this.actualizarHistorialVentas();
     }

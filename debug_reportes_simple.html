@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Simple - Reportes</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #fff; }
+        .log { background: #2d2d2d; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #4CAF50; }
+        .error { border-left-color: #f44336; }
+        .warning { border-left-color: #ff9800; }
+        h2 { color: #4CAF50; }
+        pre { background: #000; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Diagnóstico Simple de Reportes</h1>
+    <div id="output"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/database-service.js"></script>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(title, data, type = 'log') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `<h2>${title}</h2><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            output.appendChild(div);
+            console.log(title, data);
+        }
+
+        async function diagnosticar() {
+            try {
+                await new Promise(r => setTimeout(r, 1000));
+
+                if (!window.databaseService) {
+                    log('❌ ERROR', { mensaje: 'databaseService no disponible' }, 'error');
+                    return;
+                }
+
+                // 1. Probar vista_ventas
+                log('📊 Cargando vista_ventas...', { estado: 'en progreso' });
+                const ventasResult = await window.databaseService.select('vista_ventas', {
+                    ordenPor: { campo: 'fecha_cierre', direccion: 'desc' },
+                    noCache: true
+                });
+
+                if (ventasResult.success) {
+                    const ventas = ventasResult.data || [];
+                    log('✅ vista_ventas cargada', {
+                        total: ventas.length,
+                        muestra: ventas.slice(0, 3).map(v => ({
+                            id: v.id?.slice(0, 8),
+                            cliente: v.cliente,
+                            total: v.total,
+                            estado: v.estado,
+                            fecha_cierre: v.fecha_cierre,
+                            metodo_pago: v.metodo_pago
+                        }))
+                    });
+
+                    // Calcular ingresos TOTALES (sin filtro de fecha)
+                    const ventasCerradas = ventas.filter(v => 
+                        v.estado === 'cerrada' || 
+                        v.estado === 'finalizada' ||
+                        (!v.estado && v.fecha_cierre)
+                    );
+
+                    const ingresosTotales = ventasCerradas.reduce((sum, v) => 
+                        sum + (Number(v.total) || 0), 0
+                    );
+
+                    log('💰 INGRESOS TOTALES (sin filtro de fecha)', {
+                        ventas_cerradas: ventasCerradas.length,
+                        ingresos_totales: ingresosTotales,
+                        formateado: new Intl.NumberFormat('es-CO', {
+                            style: 'currency',
+                            currency: 'COP',
+                            minimumFractionDigits: 0
+                        }).format(ingresosTotales)
+                    });
+
+                    // Filtrar por últimos 30 días
+                    const hoy = new Date();
+                    const hace30Dias = new Date(hoy);
+                    hace30Dias.setDate(hace30Dias.getDate() - 30);
+
+                    const ventasUltimos30 = ventasCerradas.filter(v => {
+                        const fecha = new Date(v.fecha_cierre);
+                        return fecha >= hace30Dias && fecha <= hoy;
+                    });
+
+                    const ingresosUltimos30 = ventasUltimos30.reduce((sum, v) => 
+                        sum + (Number(v.total) || 0), 0
+                    );
+
+                    log('📅 INGRESOS ÚLTIMOS 30 DÍAS', {
+                        rango: `${hace30Dias.toLocaleDateString()} - ${hoy.toLocaleDateString()}`,
+                        ventas_en_rango: ventasUltimos30.length,
+                        ventas_fuera_rango: ventasCerradas.length - ventasUltimos30.length,
+                        ingresos_filtrados: ingresosUltimos30,
+                        formateado: new Intl.NumberFormat('es-CO', {
+                            style: 'currency',
+                            currency: 'COP',
+                            minimumFractionDigits: 0
+                        }).format(ingresosUltimos30)
+                    });
+
+                } else {
+                    log('❌ Error cargando vista_ventas', ventasResult, 'error');
+                }
+
+                // 2. Probar vista_sesiones_completa
+                log('📊 Cargando vista_sesiones_completa...', { estado: 'en progreso' });
+                const sesionesResult = await window.databaseService.select('vista_sesiones_completa', {
+                    ordenPor: { campo: 'fecha_inicio', direccion: 'desc' },
+                    noCache: true
+                });
+
+                if (sesionesResult.success) {
+                    const sesiones = sesionesResult.data || [];
+                    const sesionesFinalizadas = sesiones.filter(s => 
+                        s.finalizada === true || s.estado === 'finalizada'
+                    );
+
+                    log('✅ vista_sesiones_completa cargada', {
+                        total: sesiones.length,
+                        finalizadas: sesionesFinalizadas.length,
+                        muestra: sesiones.slice(0, 2).map(s => ({
+                            id: s.id?.slice(0, 8),
+                            cliente: s.cliente,
+                            total_general: s.total_general,
+                            finalizada: s.finalizada,
+                            fecha_inicio: s.fecha_inicio
+                        }))
+                    });
+                } else {
+                    log('❌ Error cargando vista_sesiones_completa', sesionesResult, 'error');
+                }
+
+                // 3. Probar vista_ingresos_diarios
+                log('📊 Cargando vista_ingresos_diarios...', { estado: 'en progreso' });
+                const ingresosResult = await window.databaseService.select('vista_ingresos_diarios', {
+                    ordenPor: { campo: 'fecha', direccion: 'desc' },
+                    noCache: true
+                });
+
+                if (ingresosResult.success) {
+                    const ingresos = ingresosResult.data || [];
+                    log('✅ vista_ingresos_diarios cargada', {
+                        total_dias: ingresos.length,
+                        muestra: ingresos.slice(0, 5)
+                    });
+                } else {
+                    log('⚠️ vista_ingresos_diarios no disponible', ingresosResult, 'warning');
+                }
+
+            } catch (error) {
+                log('❌ ERROR GENERAL', { error: error.message, stack: error.stack }, 'error');
+            }
+        }
+
+        setTimeout(diagnosticar, 1500);
+    </script>
+</body>
+</html>
