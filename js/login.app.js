@@ -119,6 +119,13 @@ async function waitForSupabase() {
 
 async function verificarSesionExistente() {
   try {
+    // Si fue un logout forzado, no intentar restaurar
+    if (sessionStorage.getItem('forced_logout') === 'true') {
+      console.log('🔓 Logout forzado detectado, omitiendo restauración de sesión');
+      sessionStorage.removeItem('forced_logout');
+      return;
+    }
+
     const client = await window.supabaseConfig.getSupabaseClient();
     
     // Configurar listener para cambios de estado (catch late login)
@@ -323,7 +330,23 @@ async function autenticarConSupabase(email, password) {
 
     console.log('🔐 Intentando autenticación con Supabase Auth...');
 
-    // 1) Autenticación nativa con Supabase Auth (auth.users)
+    // 1) Primero verificar si el usuario existe y está activo en la tabla usuarios
+    const { data: usuarioExistente, error: userError } = await client
+      .from('usuarios')
+      .select('*')
+      .eq('email', String(email || '').toLowerCase())
+      .single();
+
+    if (userError || !usuarioExistente) {
+      return { success: false, error: 'Usuario no encontrado o credenciales inválidas' };
+    }
+
+    // Verificar estado del usuario ANTES de autenticar
+    if (usuarioExistente.estado !== 'activo') {
+      return { success: false, error: 'Usuario inactivo. Comunicarse con soporte.' };
+    }
+
+    // 2) Autenticación nativa con Supabase Auth (auth.users)
     const { data: authData, error: authError } = await client.auth.signInWithPassword({ 
       email: email, 
       password: password 
@@ -331,8 +354,6 @@ async function autenticarConSupabase(email, password) {
 
     if (authError) {
       console.error('❌ Error Supabase Auth:', authError);
-      // Si falla auth nativo, intentamos el RPC como fallback por si es un usuario legacy
-      // o si el error es específico
       if (authError.message === 'Invalid login credentials') {
          return { success: false, error: 'Credenciales inválidas' };
       }
@@ -341,7 +362,7 @@ async function autenticarConSupabase(email, password) {
 
     console.log('✅ Autenticación nativa exitosa. Obteniendo perfil...');
 
-    // 2) Obtener perfil extendido desde public.usuarios
+    // 3) Obtener perfil extendido desde public.usuarios
     // Preferimos por id (auth.uid) y luego por email (compatibilidad legacy).
     let usuario = null;
     const uid = authData?.user?.id;
@@ -366,66 +387,15 @@ async function autenticarConSupabase(email, password) {
       }
     }
 
-    // Fallback: buscar por email
+    // Fallback: buscar por email (ya tenemos usuarioExistente)
     if (!usuario) {
-      const { data: byEmail, error: byEmailError } = await client
-        .from('usuarios')
-        .select('*')
-        .eq('email', String(email || '').toLowerCase())
-        .single();
-
-      if (!byEmailError && byEmail) {
-        usuario = byEmail;
-      }
-    }
-
-    // Si no existe perfil, crear uno (solo INSERT) con id=auth.uid
-    if (!usuario) {
-      console.warn('⚠️ Usuario autenticado pero sin perfil en public.usuarios. Creando perfil...');
-
-      const adminEmails = ['maurochica23@gmail.com', 'admin@gamecontrol.com', 'admin@sonixtec.co'];
-      const esAdmin = adminEmails.includes(String(email).toLowerCase());
-      const rolAsignado = esAdmin ? 'administrador' : 'operador';
-
-      const nuevoPerfil = {
-        id: uid,
-        email: String(email || '').toLowerCase(),
-        nombre: authData.user.user_metadata?.nombre || String(email || '').split('@')[0],
-        rol: rolAsignado,
-        estado: 'activo',
-        password_hash: 'managed_by_auth',
-        permisos: permisosPorRol(rolAsignado)
-      };
-
-      try {
-        const { data: insertData, error: insertError } = await client
-          .from('usuarios')
-          .insert(nuevoPerfil)
-          .select()
-          .single();
-
-        if (!insertError && insertData) {
-          usuario = insertData;
-        } else {
-          console.warn('⚠️ No se pudo crear perfil en usuarios, usando temporal:', insertError);
-          usuario = { ...nuevoPerfil };
-        }
-      } catch (err) {
-        console.warn('⚠️ Error creando perfil en usuarios, usando temporal:', err);
-        usuario = { ...nuevoPerfil };
-      }
+      usuario = usuarioExistente;
     }
 
     // Asegurar permisos si faltan
     if (usuario && (!usuario.permisos || Object.keys(usuario.permisos || {}).length === 0)) {
       const rol = usuario.rol || 'operador';
       usuario.permisos = permisosPorRol(rol);
-    }
-
-    // 3) Verificar estado del usuario
-    if (usuario.estado && usuario.estado !== 'activo') {
-      await client.auth.signOut();
-      return { success: false, error: 'Tu cuenta está desactivada o suspendida.' };
     }
 
     return { success: true, usuario };

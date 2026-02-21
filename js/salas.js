@@ -318,7 +318,10 @@ async function guardarSesiones(sesiones) {
                             Number(sesion.totalProductos || 0) !== Number(sesionBD.total_productos || 0) ||
                             Number(sesion.totalGeneral || 0) !== Number(sesionBD.total_general || 0) ||
                             Number(sesion.descuento || 0) !== Number(sesionBD.descuento || 0) ||
-                            JSON.stringify(sesion.productos || []) !== JSON.stringify(sesionBD.productos || [])
+                            JSON.stringify(sesion.productos || []) !== JSON.stringify(sesionBD.productos || []) ||
+                            String(sesion.salaId || sesion.sala_id || '') !== String(sesionBD.sala_id || '') ||
+                            String(sesion.estacion || '') !== String(sesionBD.estacion || '') ||
+                            String(sesion.notas || '') !== String(sesionBD.notas || '')
                         );
                         if (haCambiado) {
                             try {
@@ -1047,6 +1050,11 @@ class GestorSalas {
                                         onclick="window.gestorSalas.agregarTiempo('${sesion.id}')">
                                     <i class="fas fa-clock text-info" style="font-size: 0.8rem;"></i>
                                 </button>
+                                <button class="btn btn-sm btn-dark bg-opacity-50 border-0 p-0 flex-grow-1 d-flex align-items-center justify-content-center" 
+                                        style="height: 32px;"
+                                        onclick="window.gestorSalas.trasladarSesion('${sesion.id}')">
+                                    <i class="fas fa-exchange-alt" style="color: #a855f7; font-size: 0.8rem;"></i>
+                                </button>
                                 <button class="btn btn-sm btn-danger bg-opacity-75 border-0 p-0 flex-grow-1 d-flex align-items-center justify-content-center" 
                                         style="height: 32px;"
                                         onclick="window.gestorSalas.finalizarSesion('${sesion.id}')">
@@ -1222,6 +1230,12 @@ class GestorSalas {
                             onclick="window.gestorSalas.agregarProductos('${sesion.id}')" 
                             title="Agregar productos">
                         <i class="fas fa-shopping-cart"></i>
+                    </button>
+                    <button class="btn btn-action-minimal btn-transfer" 
+                            onclick="window.gestorSalas.trasladarSesion('${sesion.id}')" 
+                            title="Trasladar a otra estación"
+                            style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.1);">
+                        <i class="fas fa-exchange-alt"></i>
                     </button>
                     <button class="btn btn-action-minimal btn-stop" 
                             onclick="window.gestorSalas.finalizarSesion('${sesion.id}')" 
@@ -1584,6 +1598,9 @@ class GestorSalas {
                                 </button>
                                 <button class="btn btn-outline-info" onclick="window.gestorSalas.agregarProductos('${sesion.id}')" title="Agregar productos">
                                     <i class="fas fa-shopping-cart"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" onclick="window.gestorSalas.trasladarSesion('${sesion.id}')" title="Trasladar a otra estación">
+                                    <i class="fas fa-exchange-alt"></i>
                                 </button>
                                 <button class="btn btn-outline-danger" onclick="window.gestorSalas.finalizarSesion('${sesion.id}')" title="Finalizar sesión">
                                     <i class="fas fa-stop"></i>
@@ -2865,6 +2882,179 @@ class GestorSalas {
         );
     }
 
+    trasladarSesion(sesionId) {
+        const sesion = this.sesiones.find(s => s.id === sesionId);
+        if (!sesion) {
+            console.warn('⚠️ No se encontró la sesión:', sesionId);
+            mostrarNotificacion('Sesión no encontrada', 'error');
+            return;
+        }
+
+        // Verificar que la sesión esté activa
+        if (sesion.finalizada) {
+            mostrarNotificacion('No se puede trasladar una sesión finalizada', 'warning');
+            return;
+        }
+
+        // Mostrar modal de traslado
+        this.mostrarModalTrasladarSesion(sesion);
+    }
+
+    mostrarModalTrasladarSesion(sesion) {
+        // Llenar información de la sesión actual
+        const salaActual = this.salas.find(s => s.id === sesion.salaId);
+        const infoSesion = document.getElementById('infoSesionActual');
+        if (infoSesion) {
+            infoSesion.innerHTML = `
+                <strong>${sesion.cliente}</strong> en 
+                <strong>${salaActual?.nombre || 'Sala desconocida'}</strong> - 
+                <strong>Estación ${sesion.estacion}</strong>
+            `;
+        }
+
+        // Llenar select de salas
+        const selectSala = document.getElementById('trasladarSala');
+        if (selectSala) {
+            selectSala.innerHTML = this.salas.map(sala => 
+                `<option value="${sala.id}" ${sala.id === sesion.salaId ? 'selected' : ''}>${sala.nombre}</option>`
+            ).join('');
+        }
+
+        // Llenar select de estaciones basado en la sala seleccionada
+        this.actualizarEstacionesTraslado(sesion.salaId, sesion.estacion);
+
+        // Event listener para cambio de sala (limpiar listeners previos)
+        if (selectSala) {
+            const nuevoSelectSala = selectSala.cloneNode(true);
+            selectSala.parentNode.replaceChild(nuevoSelectSala, selectSala);
+            
+            nuevoSelectSala.addEventListener('change', (e) => {
+                this.actualizarEstacionesTraslado(e.target.value, sesion.estacion);
+            });
+        }
+
+        // Guardar ID de sesión
+        document.getElementById('trasladarSesionId').value = sesion.id;
+
+        // Mostrar modal
+        const modal = new bootstrap.Modal(document.getElementById('modalTrasladarSesion'));
+        modal.show();
+    }
+
+    actualizarEstacionesTraslado(salaId, estacionActual) {
+        console.log('🔍 actualizarEstacionesTraslado:', { salaId, estacionActual });
+        
+        const sala = this.salas.find(s => s.id === salaId);
+        console.log('  - Sala encontrada:', sala);
+        
+        const selectEstacion = document.getElementById('trasladarEstacion');
+        console.log('  - Select estación:', selectEstacion);
+        
+        if (!sala || !selectEstacion) {
+            console.log('❌ No se encontró sala o select');
+            return;
+        }
+
+        console.log('  - Num estaciones:', sala.numEstaciones, 'Prefijo:', sala.prefijo);
+
+        // Generar opciones de estaciones
+        const opciones = [];
+        for (let i = 1; i <= sala.numEstaciones; i++) {
+            const estacionNombre = `${sala.prefijo}${i}`;
+            console.log('  - Procesando estación:', estacionNombre);
+            
+            const ocupada = this.sesiones.some(s => 
+                !s.finalizada && 
+                s.salaId === salaId && 
+                s.estacion === estacionNombre &&
+                s.id !== document.getElementById('trasladarSesionId').value
+            );
+            
+            console.log('  - Estación', estacionNombre, 'ocupada:', ocupada);
+            
+            if (!ocupada || estacionNombre === estacionActual) {
+                const selected = estacionNombre === estacionActual ? 'selected' : '';
+                const label = ocupada ? `${estacionNombre} (actual)` : estacionNombre;
+                opciones.push(`<option value="${estacionNombre}" ${selected}>${label}</option>`);
+            }
+        }
+        
+        selectEstacion.innerHTML = opciones.join('');
+    }
+
+    async ejecutarTrasladoSesion() {
+        const form = document.getElementById('formTrasladarSesion');
+        if (!form) {
+            mostrarNotificacion('Error: Formulario no encontrado', 'error');
+            return;
+        }
+
+        const formData = new FormData(form);
+        const sesionId = formData.get('sesionId');
+        const nuevaSalaId = formData.get('salaId');
+        const nuevaEstacion = formData.get('estacion');
+
+        if (!sesionId || !nuevaSalaId || !nuevaEstacion) {
+            mostrarNotificacion('Datos incompletos para el traslado', 'error');
+            return;
+        }
+
+        const sesionIndex = this.sesiones.findIndex(s => s.id === sesionId);
+        if (sesionIndex === -1) {
+            mostrarNotificacion('Sesión no encontrada', 'error');
+            return;
+        }
+
+        const sesion = this.sesiones[sesionIndex];
+        const salaActual = this.salas.find(s => s.id === sesion.salaId);
+        const salaNueva = this.salas.find(s => s.id === nuevaSalaId);
+
+        // Verificar que la nueva estación esté disponible
+        const estacionOcupada = this.sesiones.some(s => 
+            !s.finalizada && 
+            s.salaId === nuevaSalaId && 
+            s.estacion === nuevaEstacion &&
+            s.id !== sesionId
+        );
+
+        if (estacionOcupada) {
+            mostrarNotificacion('La estación seleccionada ya está ocupada', 'error');
+            return;
+        }
+
+        try {
+            // Guardar valores originales para la nota
+            const estacionOriginal = sesion.estacion;
+            const salaOriginal = salaActual;
+            
+            // Actualizar la sesión
+            sesion.salaId = nuevaSalaId;
+            sesion.estacion = nuevaEstacion;
+
+            // Agregar nota de traslado
+            const notaTraslado = `[TRASLADO] ${new Date().toISOString()} - De ${salaOriginal?.nombre || 'Sala desconocida'} Est.${estacionOriginal} → ${salaNueva?.nombre || 'Sala desconocida'} Est.${nuevaEstacion}`;
+            sesion.notas = (sesion.notas ? sesion.notas + '\n' : '') + notaTraslado;
+
+            // Guardar cambios
+            await guardarSesiones(this.sesiones);
+
+            // Actualizar vista
+            this.actualizarVista();
+
+            // Cerrar modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalTrasladarSesion'));
+            if (modal) {
+                modal.hide();
+            }
+
+            mostrarNotificacion(`Sesión trasladada correctamente a ${salaNueva?.nombre || 'nueva sala'} - Estación ${nuevaEstacion}`, 'success');
+
+        } catch (error) {
+            console.error('❌ Error al trasladar sesión:', error);
+            mostrarNotificacion('Error al trasladar la sesión', 'error');
+        }
+    }
+
     async recargarSesionesRemoto() {
         try {
             if (!window.databaseService) return false;
@@ -3160,6 +3350,15 @@ class GestorSalas {
                 }
             });
         });
+
+        // Manejar formulario de traslado de sesión
+        const formTrasladarSesion = document.getElementById('formTrasladarSesion');
+        if (formTrasladarSesion) {
+            formTrasladarSesion.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await this.ejecutarTrasladoSesion();
+            });
+        }
     }
     
     mostrarModalTarifas() {

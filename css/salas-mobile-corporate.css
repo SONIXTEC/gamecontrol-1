@@ -516,8 +516,8 @@
   /* ACCIONES (BOTONES) GRANDES Y NATIVOS */
   body.salas-page.salas-corporate #tablaSesiones .acciones-sesion {
       display: grid !important;
-      grid-template-columns: 1fr 1fr 1fr !important; /* 3 columnas iguales */
-      gap: 0.75rem !important;
+      grid-template-columns: repeat(4, 1fr) !important; /* 4 columnas iguales */
+      gap: 0.5rem !important;
       width: 100% !important;
   }
 
@@ -545,7 +545,8 @@
   }
   
   /* Colores específicos para acciones */
-  body.salas-page.salas-corporate #tablaSesiones .acciones-sesion .btn:nth-child(3) i { color: #ef4444; } /* Stop rojo */
+  body.salas-page.salas-corporate #tablaSesiones .acciones-sesion .btn:nth-child(4) i { color: #ef4444; } /* Stop rojo */
+  body.salas-page.salas-corporate #tablaSesiones .acciones-sesion .btn:nth-child(3) i { color: #f59e0b; } /* Trasladar naranja */
   body.salas-page.salas-corporate #tablaSesiones .acciones-sesion .btn:nth-child(2) i { color: #8b5cf6; } /* Productos violeta */
   
   /* Estado activo botones */
@@ -557,7 +558,7 @@
   /* Ajuste para acciones dentro del grid de salas (tarjetas superiores) */
   body.salas-page.salas-corporate .acciones-rapidas-minimal {
       display: grid !important;
-      grid-template-columns: 1fr 1fr 1fr !important;
+      grid-template-columns: repeat(4, 1fr) !important;
       gap: 0.5rem !important;
       width: 100% !important;
   }

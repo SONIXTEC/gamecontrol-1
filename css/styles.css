@@ -3995,6 +3995,21 @@ body {
     box-shadow: 0 4px 12px rgba(13, 202, 240, 0.3);
 }
 
+/* Botón de trasladar sesión */
+.acciones-rapidas-minimal .btn-outline-warning {
+    background: var(--warning-color);
+    border-color: var(--warning-color);
+    color: white;
+}
+
+.acciones-rapidas-minimal .btn-outline-warning:hover {
+    background: #ffc107;
+    border-color: #ffc107;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+}
+
 /* Botón de finalizar sesión */
 .acciones-rapidas-minimal .btn-outline-danger {
     background: var(--danger-color);

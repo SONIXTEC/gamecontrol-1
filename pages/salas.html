@@ -554,6 +554,55 @@
         </div>
     </div>
 
+    <!-- Modal Trasladar Sesión -->
+    <div class="modal fade" id="modalTrasladarSesion" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-exchange-alt me-2"></i>Trasladar Sesión</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formTrasladarSesion">
+                    <div class="modal-body">
+                        <input type="hidden" id="trasladarSesionId" name="sesionId">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Sesión Actual</label>
+                            <div class="alert alert-info">
+                                <strong id="infoSesionActual">Cargando...</strong>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="trasladarSala" class="form-label">Nueva Sala</label>
+                            <select class="form-select" id="trasladarSala" name="salaId" required>
+                                <!-- Las salas se cargarán dinámicamente -->
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="trasladarEstacion" class="form-label">Nueva Estación</label>
+                            <select class="form-select" id="trasladarEstacion" name="estacion" required>
+                                <!-- Las estaciones se cargarán dinámicamente -->
+                            </select>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Nota:</strong> El traslado mantendrá el tiempo restante y los productos asociados a la sesión.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-warning" onclick="window.gestorSalas?.ejecutarTrasladoSesion()">
+                            <i class="fas fa-exchange-alt me-2"></i>Trasladar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== VERIFICACIÓN DE AUTENTICACIÓN FINAL ===== -->
     <script>
         // Verificación final que usa navigation-utils

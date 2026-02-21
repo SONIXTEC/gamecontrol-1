@@ -342,6 +342,9 @@ class SupabaseAuthSystem {
         try {
             console.log('🔓 Cerrando sesión...');
 
+            // Marcar como logout forzado para evitar restauración automática
+            sessionStorage.setItem('forced_logout', 'true');
+
             // Cerrar sesión en Supabase Auth
             if (this.client) {
                 const { error } = await this.client.auth.signOut();
