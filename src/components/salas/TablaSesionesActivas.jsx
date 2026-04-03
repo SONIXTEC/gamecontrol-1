@@ -84,19 +84,66 @@ export default function TablaSesionesActivas({ sesiones = [], salas = [], onAgre
 
   return ( 
     <div className="glass-card rounded-2xl overflow-hidden">
-      <div className="p-5 border-b border-white/5 flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3 kpi-number">
-          <div className="w-11 h-11 rounded-xl bg-[#00D656]/15 flex items-center justify-center">
-            <Clock size={22} className="text-[#00D656]" />
+      <div className="p-4 md:p-5 border-b border-white/5 flex items-center justify-between">
+        <h2 className="text-lg md:text-2xl font-bold text-white flex items-center gap-2 md:gap-3 kpi-number">
+          <div className="w-9 h-9 md:w-11 md:h-11 rounded-xl bg-[#00D656]/15 flex items-center justify-center">
+            <Clock size={18} className="text-[#00D656] md:hidden" />
+            <Clock size={22} className="text-[#00D656] hidden md:block" />
           </div>
           Sesiones Activas
         </h2>
-        <span className="px-4 py-2 bg-[#00D656]/10 text-[#00D656] rounded-xl text-sm font-bold border border-[#00D656]/20">
+        <span className="px-3 py-1.5 md:px-4 md:py-2 bg-[#00D656]/10 text-[#00D656] rounded-xl text-xs md:text-sm font-bold border border-[#00D656]/20">
           {sesionesActivas.length} activas
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Vista cards para mobile */}
+      <div className="md:hidden divide-y divide-white/5">
+        {sesionesActivas.map((sesion) => {
+          const tiempoTranscurrido = tiemposTranscurridos[sesion.id] || 0;
+          const tiempoTotal = (sesion.tiempoOriginal || sesion.tiempo || 0) + (sesion.tiempoAdicional || 0);
+          const esLibre = sesion.modo === 'libre';
+          const total = calcularTotal(sesion);
+
+          return (
+            <div key={sesion.id} className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-[#00D656]/15 text-[#00D656] rounded text-xs font-bold">{sesion.estacion}</span>
+                  <span className="text-sm font-medium text-white">{obtenerNombreSala(sesion.salaId)}</span>
+                </div>
+                <span className="text-lg font-bold text-[#00D656] kpi-number">{formatCOP(total)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-1.5 text-gray-300">
+                  <User size={14} className="text-gray-500" />
+                  <span>{sesion.cliente || 'Cliente'}</span>
+                </div>
+                <span className={`font-semibold kpi-number ${esLibre ? 'text-cyan-400' : tiempoTranscurrido > tiempoTotal ? 'text-red-400' : 'text-white'}`}>
+                  {esLibre ? `∞ ${formatearTiempo(tiempoTranscurrido)}` : `${formatearTiempo(tiempoTranscurrido)} / ${formatearTiempo(tiempoTotal)}`}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <button onClick={() => onAgregarTiempo?.(sesion)} className="h-11 flex items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 active:bg-cyan-500/20 text-xs font-semibold">
+                  +Tiempo
+                </button>
+                <button onClick={() => onAgregarProducto?.(sesion)} className="h-11 flex items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 active:bg-purple-500/20 text-xs font-semibold">
+                  +Prod
+                </button>
+                <button onClick={() => onTrasladar?.(sesion)} className="h-11 flex items-center justify-center rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 active:bg-orange-500/20 text-xs font-semibold">
+                  Mover
+                </button>
+                <button onClick={() => onFinalizar?.(sesion)} className="h-11 flex items-center justify-center rounded-xl bg-[#00D656]/10 text-[#00D656] border border-[#00D656]/20 active:bg-[#00D656]/20 text-xs font-bold">
+                  Cobrar
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Vista tabla para desktop */}
+      <div className="overflow-x-auto hidden md:block">
         <table className="w-full">
           <thead className="bg-[#1A1C23]/50">
             <tr>

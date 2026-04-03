@@ -366,7 +366,7 @@ export default function ModalSesion({ sala, estacion, onCerrar }) {
                 title="Agregar nuevo cliente"
               >
                 <UserPlus size={18} />
-                Agregar
+                <span className="hidden sm:inline">Agregar</span>
               </button>
             </div>
           </div>
@@ -387,7 +387,7 @@ export default function ModalSesion({ sala, estacion, onCerrar }) {
               <Clock size={16} />
               Duración
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {OPCIONES_TIEMPO.map((op) => {
                 const costo = op.key ? (tarifas[op.key] || 0) : null;
                 const activo = !usandoPersonalizado && tiempoSeleccionado === op.value;
@@ -534,11 +534,11 @@ export default function ModalSesion({ sala, estacion, onCerrar }) {
           </div>
 
           {/* Botones */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               type="button"
               onClick={onCerrar}
-              className="flex-1 px-5 py-3.5 rounded-xl bg-[#1A1C23] border border-white/5 text-gray-400 
+              className="sm:flex-1 px-5 py-3.5 rounded-xl bg-[#1A1C23] border border-white/5 text-gray-400 
                 hover:text-white hover:border-white/10 transition-all font-semibold"
             >
               Cancelar
@@ -546,7 +546,7 @@ export default function ModalSesion({ sala, estacion, onCerrar }) {
             <button
               type="submit"
               disabled={cargando}
-              className="btn-premium flex-1 px-5 py-3.5 rounded-xl font-bold text-base
+              className="btn-premium sm:flex-1 px-5 py-3.5 rounded-xl font-bold text-base
                 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
             >
               <Play size={20} />

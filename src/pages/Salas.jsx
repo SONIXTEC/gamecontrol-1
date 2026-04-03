@@ -100,12 +100,12 @@ export default function Salas() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] tech-grid-bg p-6 space-y-6">
+    <div className="min-h-screen bg-[#0B0F19] tech-grid-bg px-3 py-4 md:p-6 space-y-4 md:space-y-6">
       {/* Encabezado Premium */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Salas Gaming</h1>
-          <p className="text-sm text-gray-400 mt-1">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="pl-14 md:pl-0">
+          <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Salas Gaming</h1>
+          <p className="text-xs md:text-sm text-gray-400 mt-1">
             <span className="text-[#00D656] font-semibold">{estacionesLibres}</span> estaciones libres · 
             <span className="text-red-400 font-semibold ml-1">{estacionesOcupadas}</span> en uso
           </p>
@@ -123,7 +123,7 @@ export default function Salas() {
       </div>
 
       {/* KPI Cards Premium */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 md:gap-4">
         {stats.map((s) => (
           <div
             key={s.label}
@@ -177,9 +177,9 @@ export default function Salas() {
       )}
 
       {/* Panel de Control Premium */}
-      <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+      <div className="glass-card rounded-2xl p-4 md:p-6">
+        <div className="flex items-center justify-between mb-4 md:mb-6 flex-wrap gap-3">
+          <h2 className="text-lg md:text-2xl font-bold text-white flex items-center gap-2 md:gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#00D656]/20 to-green-600/20 flex items-center justify-center">
               <Gamepad2 size={24} className="text-[#00D656]" />
             </div>
@@ -213,7 +213,7 @@ export default function Salas() {
         </div>
 
         {/* Filtros Premium */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Búsqueda */}
           <div className="relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -229,7 +229,7 @@ export default function Salas() {
           </div>
 
           {/* Filtros por tipo */}
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin snap-x snap-mandatory">
             {[
               { value: 'todas', label: 'Todas' },
               { value: 'playstation', label: 'PlayStation' },
@@ -240,7 +240,7 @@ export default function Salas() {
               <button
                 key={filtro.value}
                 onClick={() => setTipoFiltro(filtro.value)}
-                className={`px-5 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+                className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all snap-start ${
                   tipoFiltro === filtro.value
                     ? 'bg-gradient-to-r from-[#00D656] to-green-500 text-black shadow-[0_0_20px_rgba(0,214,86,0.3)]'
                     : 'bg-[#1A1C23] text-gray-400 border border-white/5 hover:border-[#00D656]/20 hover:text-white'

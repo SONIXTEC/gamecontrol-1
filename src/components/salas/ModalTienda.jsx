@@ -230,7 +230,7 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
 
   return (
     <Modal abierto={abierto} titulo="" onCerrar={onCerrar} size="full">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[80vh]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 h-[calc(100dvh-8rem)] lg:h-[80vh]">
         {/* PANEL IZQUIERDO - Productos */}
         <div className="lg:col-span-2 flex flex-col space-y-4">
           {/* Header */}
@@ -387,7 +387,7 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
         </div>
 
         {/* PANEL DERECHO - Carrito */}
-        <div className="flex flex-col bg-[#0B0F19] rounded-2xl p-6 border border-white/5">
+        <div className="flex flex-col bg-[#0B0F19] rounded-2xl p-4 lg:p-6 border border-white/5">
           {/* Header carrito */}
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
             <div className="flex items-center gap-3">
@@ -443,24 +443,24 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => actualizarCantidad(item.id, item.cantidad - 1)}
-                            className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/30 flex items-center justify-center transition-colors"
+                            className="w-9 h-9 rounded-lg bg-red-500/20 hover:bg-red-500/30 flex items-center justify-center transition-colors"
                           >
-                            <Minus size={14} className="text-red-400" />
+                            <Minus size={16} className="text-red-400" />
                           </button>
                           <span className="text-white font-bold text-sm w-8 text-center">
                             {item.cantidad}
                           </span>
                           <button
                             onClick={() => actualizarCantidad(item.id, item.cantidad + 1)}
-                            className="w-7 h-7 rounded-lg bg-green-500/20 hover:bg-green-500/30 flex items-center justify-center transition-colors"
+                            className="w-9 h-9 rounded-lg bg-green-500/20 hover:bg-green-500/30 flex items-center justify-center transition-colors"
                           >
-                            <Plus size={14} className="text-green-400" />
+                            <Plus size={16} className="text-green-400" />
                           </button>
                         </div>
                         
                         <button
                           onClick={() => eliminarDelCarrito(item.id)}
-                          className="w-7 h-7 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors"
+                          className="w-9 h-9 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors"
                         >
                           <Trash2 size={14} className="text-gray-400 hover:text-red-400" />
                         </button>

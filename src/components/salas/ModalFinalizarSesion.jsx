@@ -195,12 +195,12 @@ export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
       size="xl"
     >
       {/* Header */}
-      <div className="flex items-center gap-4 pb-6 mb-6 border-b border-white/10">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#00D656] to-[#00A844] flex items-center justify-center shadow-lg shadow-[#00D656]/20">
-          <CircleCheckBig size={28} className="text-white" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pb-4 sm:pb-6 mb-4 sm:mb-6 border-b border-white/10">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-[#00D656] to-[#00A844] flex items-center justify-center shadow-lg shadow-[#00D656]/20 flex-shrink-0">
+          <CircleCheckBig size={24} className="text-white" />
         </div>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-white mb-1">Finalizar Sesión</h2>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">Finalizar Sesión</h2>
           <div className="flex items-center gap-3 text-sm text-gray-400">
             <span className="flex items-center gap-1.5">
               <Package size={14} />
@@ -210,15 +210,15 @@ export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
             <span>{sesion.estacion}</span>
           </div>
         </div>
-        {/* Total destacado en header */}
-        <div className="text-right">
+        {/* Total destacado */}
+        <div className="text-left sm:text-right w-full sm:w-auto flex-shrink-0">
           <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-1">Total a Pagar</p>
-          <p className="text-4xl font-bold text-[#00D656]">{formatCOP(totalGeneral)}</p>
+          <p className="text-3xl sm:text-4xl font-bold text-[#00D656]">{formatCOP(totalGeneral)}</p>
         </div>
       </div>
 
-      {/* Layout de dos columnas para PC */}
-      <div className="grid grid-cols-2 gap-6">
+      {/* Layout responsive — 1 col mobile, 2 cols desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         {/* ===== COLUMNA IZQUIERDA: Detalles de la sesión ===== */}
         <div className="space-y-4">
           {/* Información del cliente */}
@@ -425,7 +425,7 @@ export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
               <p className="text-xs font-bold text-yellow-400 uppercase tracking-wider mb-4">
                 Desglose del Pago
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-gray-400 mb-2 font-medium">Efectivo</label>
                   <div className="relative">
@@ -504,10 +504,10 @@ export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
                         <button
                           type="button"
                           onClick={() => copiarNumero(medio.numero, medio.id)}
-                          className="text-gray-400 hover:text-[#00D656] transition-colors p-1"
+                          className="text-gray-400 hover:text-[#00D656] transition-colors p-2 -m-1"
                           title="Copiar número"
                         >
-                          {copiado === medio.id ? <Check size={14} className="text-[#00D656]" /> : <Copy size={14} />}
+                          {copiado === medio.id ? <Check size={18} className="text-[#00D656]" /> : <Copy size={18} />}
                         </button>
                       </div>
                       <p className="font-mono font-bold text-lg text-white tracking-wide">{medio.numero}</p>
