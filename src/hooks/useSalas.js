@@ -441,12 +441,13 @@ async function _registrarVentaContable(sesion, opts) {
     montosParciales,
   } = opts;
 
-  const usuarioId = isUuid(authUid) ? authUid : null;
+  // usuario_id siempre null: la FK en ventas apunta a public.usuarios (no auth.users)
+  // Pasar authUid (auth.users UUID) causaría FK violation si no existe en public.usuarios
 
   const ventaData = {
     sesion_id: sesion.id,
     sala_id: sesion.salaId || null,
-    usuario_id: usuarioId,
+    usuario_id: null,
     cliente: sesion.cliente || 'Cliente',
     estacion: sesion.estacion || null,
     fecha_inicio: sesion.fecha_inicio || null,
@@ -477,7 +478,11 @@ async function _registrarVentaContable(sesion, opts) {
 
   try {
     await db.insert('ventas', ventaData);
-  } catch {
-    // Si ya existe por UNIQUE(sesion_id), ignorar
+  } catch (err) {
+    const msg = (err?.message || '').toLowerCase();
+    // Solo ignorar si es duplicado por UNIQUE(sesion_id)
+    if (!msg.includes('duplicate') && !msg.includes('unique') && !msg.includes('already exists')) {
+      console.warn('⚠️ No se pudo registrar venta contable:', err?.message || err);
+    }
   }
 }
