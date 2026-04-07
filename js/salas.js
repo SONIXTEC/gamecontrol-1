@@ -4873,8 +4873,11 @@ class GestorSalas {
 
         // Verificar stock y reducir inventario usando la nueva función de trazabilidad
         const productosRechazados = [];
-        let productosProcesados = 0;
-        
+        const productosExitosos = []; // ← solo los que pasaron stock
+
+        // Bloquear re-render del modal mientras confirmamos (evita interferencia de stockActualizado)
+        this._confirmandoProductos = true;
+
         // Usar for...of para permitir operaciones asíncronas secuenciales
         for (const producto of productos) {
             let ventaExitosa = false;
@@ -4897,29 +4900,59 @@ class GestorSalas {
             }
 
             if (ventaExitosa) {
-                productosProcesados++;
+                productosExitosos.push(producto);
             } else {
                 productosRechazados.push(producto.nombre);
             }
         }
 
-        // Si hay productos rechazados, mostrar error
-        if (productosRechazados.length > 0) {
+        this._confirmandoProductos = false;
+
+        // Si ninguno pasó, abortar
+        if (productosExitosos.length === 0) {
             mostrarNotificacion(`Stock insuficiente para: ${productosRechazados.join(', ')}`, 'error');
             return;
         }
 
-        // Agregar productos a la sesión con timestamp
+        // Si solo algunos fallaron, avisar pero continuar con los exitosos
+        if (productosRechazados.length > 0) {
+            mostrarNotificacion(`Stock insuficiente para: ${productosRechazados.join(', ')}. Los demás se agregaron correctamente.`, 'warning');
+        }
+
+        // Agregar a la sesión SOLO los productos exitosos, con timestamp
         sesion.productos = sesion.productos || [];
-        const productosConFecha = productos.map(producto => ({
+        const productosConFecha = productosExitosos.map(producto => ({
             ...producto,
             fechaAgregado: new Date().toISOString()
         }));
         
         sesion.productos.push(...productosConFecha);
-        await guardarSesiones(this.sesiones);
 
-        console.log('  - Productos agregados a la sesión:', productosProcesados);
+        // Recalcular totales en memoria para que guardarSesiones detecte el cambio y guarde correctamente
+        sesion.totalProductos = sesion.productos.reduce(
+            (sum, p) => sum + (p.subtotal || (p.cantidad * p.precio)), 0
+        );
+        const _costoTiempo = (sesion.tarifa_base || sesion.tarifa || 0) + (sesion.costoAdicional || 0);
+        sesion.totalGeneral = _costoTiempo + sesion.totalProductos;
+
+        // Persistir directamente en BD (más robusto que pasar por guardarSesiones)
+        const _isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+        if (window.databaseService && _isUuid(sesion.id)) {
+            try {
+                await window.databaseService.update('sesiones', sesion.id, {
+                    productos: sesion.productos,
+                    total_productos: sesion.totalProductos,
+                    total_general: sesion.totalGeneral,
+                });
+            } catch (dbErr) {
+                console.warn('⚠️ No se pudo guardar productos en Supabase (reintentando vía guardarSesiones):', dbErr?.message || dbErr);
+                await guardarSesiones(this.sesiones);
+            }
+        } else {
+            await guardarSesiones(this.sesiones);
+        }
+
+        console.log('  - Productos agregados a la sesión:', productosExitosos.length);
 
         // Cerrar el modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('modalAgregarProductos'));
@@ -4936,8 +4969,9 @@ class GestorSalas {
             this.actualizarEstadisticas();
         }
         
-        const resumen = productos.map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
-        mostrarNotificacion(`Productos agregados: ${resumen} | Total: ${formatearMoneda(total)}`, 'success');
+        const resumen = productosExitosos.map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
+        const totalExitosos = productosExitosos.reduce((s, p) => s + (p.subtotal || (p.cantidad * p.precio)), 0);
+        mostrarNotificacion(`Productos agregados: ${resumen} | Total: ${formatearMoneda(totalExitosos)}`, 'success');
     }
 
     // === TIENDA (venta directa de productos sin sesión) ===
@@ -6198,9 +6232,10 @@ window.addEventListener('stockActualizado', (event) => {
     console.log('Stock actualizado:', event.detail);
     
     // Si estamos en la página de salas y hay un modal de productos abierto, recargarlo
+    // PERO no si estamos en proceso de confirmar (evita interferencia con la confirmación)
     const modalProductos = document.getElementById('modalAgregarProductos');
     if (modalProductos && modalProductos.classList.contains('show')) {
-        if (window.gestorSalas) {
+        if (window.gestorSalas && !window.gestorSalas._confirmandoProductos) {
             window.gestorSalas.cargarProductosEnModal();
         }
     }
