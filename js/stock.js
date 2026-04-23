@@ -1728,22 +1728,8 @@ class GestorStock {
 
                 const usuarioIdCandidate = (window.sessionManager && window.sessionManager.getCurrentUser && window.sessionManager.getCurrentUser()?.id) || null;
                 // Priorizar auth.uid para cumplir políticas RLS en Supabase
-                const usuarioIdCandidateValid = (isUuid(authUid) ? authUid : null) || (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null);
-                let usuarioId = null;
-                if (usuarioIdCandidateValid) {
-                    try {
-                        const resUsuario = await window.databaseService.select('usuarios', {
-                            filtros: { id: usuarioIdCandidateValid },
-                            limite: 1,
-                            noCache: true
-                        });
-                        if (resUsuario?.success && Array.isArray(resUsuario.data) && resUsuario.data.length > 0) {
-                            usuarioId = usuarioIdCandidateValid;
-                        }
-                    } catch (_) {
-                        usuarioId = null;
-                    }
-                }
+                // No verificar existencia en tabla usuarios: lo que importa para RLS es auth.uid()
+                const usuarioId = (isUuid(authUid) ? authUid : null) || (isUuid(usuarioIdCandidate) ? usuarioIdCandidate : null) || null;
 
                 const metodoPagoDb = metodoPago === 'qr' ? 'digital' : metodoPago;
 
@@ -1801,7 +1787,11 @@ class GestorStock {
                     }
                 }
             } catch (e) {
-                console.warn('⚠️ No se pudo registrar venta contable de tienda:', e?.message || e);
+                console.error('❌ No se pudo registrar venta contable de tienda:', e?.message || e, e);
+                // Notificar al usuario que hubo un error de registro contable (stock descontado pero no en ventas)
+                if (typeof mostrarNotificacion === 'function') {
+                    mostrarNotificacion('⚠️ Stock descontado pero la venta no quedó registrada en el historial (error contable). Verifica permisos.', 'warning');
+                }
             }
         }
 

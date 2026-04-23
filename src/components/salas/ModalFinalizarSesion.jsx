@@ -18,7 +18,9 @@ import {
   ChevronUp,
   Package,
   Copy,
-  Check
+  Check,
+  Ban,
+  AlertTriangle
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { useSalas } from '../../hooks/useSalas';
@@ -84,8 +86,12 @@ function calcularTarifaSugeridaTiempoLibre(sala, duracionMin) {
  * }} props
  */
 export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
-  const { finalizarSesion } = useSalas();
+  const { finalizarSesion, anularSesion } = useSalas();
   const { exito, error: notifError } = useNotifications();
+
+  const [modoAnular, setModoAnular] = useState(false);
+  const [motivoAnulacion, setMotivoAnulacion] = useState('');
+  const [motivoError, setMotivoError] = useState(false);
 
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [montoManualLibre, setMontoManualLibre] = useState('');
@@ -179,6 +185,24 @@ export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
       });
 
       exito(`Sesión finalizada. Total: ${formatCOP(total || totalGeneral)}`);
+      onCerrar();
+    } catch (err) {
+      notifError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function handleAnular() {
+    if (!motivoAnulacion.trim()) {
+      setMotivoError(true);
+      return;
+    }
+    setMotivoError(false);
+    setCargando(true);
+    try {
+      await anularSesion(sesion.id, { motivo: motivoAnulacion });
+      exito('Sesión anulada correctamente.');
       onCerrar();
     } catch (err) {
       notifError(err.message);
@@ -542,32 +566,95 @@ export default function ModalFinalizarSesion({ sesion, sala, onCerrar }) {
             )}
           </div>
 
-          {/* Botones de acción */}
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={onCerrar}
-              className="flex-1 py-4 rounded-xl border-2 border-white/20 text-white font-semibold hover:bg-white/5 transition-all"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleCobrar}
-              disabled={cargando || !parcialValido}
-              className="flex-1 py-4 rounded-xl bg-gradient-to-r from-[#00D656] to-[#00A844] hover:from-[#00E661] hover:to-[#00B84F] text-white font-bold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#00D656]/20"
-            >
-              {cargando ? (
-                <>
-                  <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Procesando...
-                </>
-              ) : (
-                <>
-                  <CircleCheckBig size={20} />
-                  Cobrar {formatCOP(totalGeneral)}
-                </>
+          {/* Panel de anulación */}
+          {modoAnular && (
+            <div className="glass-card p-5 rounded-2xl border border-red-500/40 bg-red-500/5">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={16} className="text-red-400" />
+                <p className="text-sm font-bold text-red-400 uppercase tracking-wide">Anular sesión</p>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">
+                La sesión quedará registrada como <span className="text-red-400 font-semibold">anulada</span> sin cobro. Esta acción no se puede deshacer.
+              </p>
+              <label className="block text-xs text-gray-400 mb-1 font-medium">
+                Motivo de anulación <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={motivoAnulacion}
+                onChange={(e) => { setMotivoAnulacion(e.target.value); setMotivoError(false); }}
+                rows={3}
+                placeholder="Describe el motivo de la anulación..."
+                className={`w-full rounded-xl border bg-white/5 px-4 py-3 text-sm text-white placeholder:text-gray-500 resize-none focus:outline-none focus:ring-2 transition-all ${
+                  motivoError
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-white/20 focus:ring-red-500 focus:border-transparent'
+                }`}
+              />
+              {motivoError && (
+                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                  <AlertTriangle size={12} /> El motivo es obligatorio.
+                </p>
               )}
-            </button>
-          </div>
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => { setModoAnular(false); setMotivoAnulacion(''); setMotivoError(false); }}
+                  className="flex-1 py-3 rounded-xl border border-white/20 text-white text-sm font-semibold hover:bg-white/5 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleAnular}
+                  disabled={cargando}
+                  className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {cargando ? (
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Ban size={15} />
+                  )}
+                  Confirmar anulación
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Botones de acción */}
+          {!modoAnular && (
+            <div className="flex flex-col gap-3 pt-2">
+              <div className="flex gap-3">
+                <button
+                  onClick={onCerrar}
+                  className="flex-1 py-4 rounded-xl border-2 border-white/20 text-white font-semibold hover:bg-white/5 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCobrar}
+                  disabled={cargando || !parcialValido}
+                  className="flex-1 py-4 rounded-xl bg-gradient-to-r from-[#00D656] to-[#00A844] hover:from-[#00E661] hover:to-[#00B84F] text-white font-bold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#00D656]/20"
+                >
+                  {cargando ? (
+                    <>
+                      <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      Procesando...
+                    </>
+                  ) : (
+                    <>
+                      <CircleCheckBig size={20} />
+                      Cobrar {formatCOP(totalGeneral)}
+                    </>
+                  )}
+                </button>
+              </div>
+              <button
+                onClick={() => setModoAnular(true)}
+                className="w-full py-3 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/10 hover:border-red-500/50 transition-all flex items-center justify-center gap-2"
+              >
+                <Ban size={16} />
+                Anular sesión
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Modal>

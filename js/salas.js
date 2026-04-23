@@ -564,6 +564,8 @@ class GestorSalas {
         this._alertasTiempoDisparadas = new Set();
         this._audioCtx = null; // WebAudio para beep
     this._ultimaAlarmaMinuto = new Map(); // sesionId -> último minuto excedido alertado
+        this._colaAlertasTiempoCumplido = [];
+        this._modalAlertaTiempoCumplidoActiva = false;
         
         console.log('  - Configuración cargada:', this.config);
         
@@ -663,21 +665,23 @@ class GestorSalas {
     _alertarTiempoCumplido(sesion) {
         if (!sesion || !sesion.id) return;
         if (this._alertasTiempoDisparadas.has(sesion.id)) return;
-        // Respetar flag de alarmas habilitadas
-        try {
-            const cfg = obtenerConfiguracion();
-            if (cfg?.alarmasSesion && cfg.alarmasSesion.enabled === false) return;
-        } catch (_) {}
         this._alertasTiempoDisparadas.add(sesion.id);
 
         const mensaje = `${sesion.cliente} en ${sesion.estacion} — tiempo cumplido`;
         try { mostrarNotificacion(mensaje, 'danger'); } catch (_) { console.warn(mensaje); }
+        this._mostrarPopupTiempoCumplido(sesion);
 
         // Resaltar visualmente la estación
         try {
             const nodoTiempo = document.querySelector(`[data-sesion-id="${sesion.id}"]`);
             const estacionCard = nodoTiempo?.closest('.estacion-minimal');
             if (estacionCard) estacionCard.classList.add('alarma-visual');
+        } catch (_) {}
+
+        // Respetar flag de alarmas habilitadas solo para audio
+        try {
+            const cfg = obtenerConfiguracion();
+            if (cfg?.alarmasSesion && cfg.alarmasSesion.enabled === false) return;
         } catch (_) {}
 
         // Patrón inicial configurable (simple, doble, triple)
@@ -719,6 +723,136 @@ class GestorSalas {
                 this._beep(220, 920, 0.22);
             }
         } catch (_) {}
+    }
+
+    _reiniciarAlertasTiempoCumplido(sesionId) {
+        if (!sesionId) return;
+        try {
+            this._alertasTiempoDisparadas.delete(sesionId);
+            this._ultimaAlarmaMinuto.delete(sesionId);
+            this._colaAlertasTiempoCumplido = this._colaAlertasTiempoCumplido.filter(sesion => sesion?.id !== sesionId);
+        } catch (_) {}
+    }
+
+    _obtenerSalaDeSesion(sesion) {
+        if (!sesion) return null;
+        return this.salas.find(sala => sala.id === sesion.salaId) || null;
+    }
+
+    _asegurarModalTiempoCumplido() {
+        let modalElement = document.getElementById('modalTiempoCumplido');
+        if (modalElement) return modalElement;
+
+        const modalWrapper = document.createElement('div');
+        modalWrapper.innerHTML = `
+            <div class="modal fade" id="modalTiempoCumplido" tabindex="-1" aria-labelledby="modalTiempoCumplidoLabel" aria-hidden="true" data-bs-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow-lg">
+                        <div class="modal-header bg-danger text-white border-0">
+                            <h5 class="modal-title fw-bold" id="modalTiempoCumplidoLabel">
+                                <i class="fas fa-bell me-2"></i>Tiempo terminado
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div class="text-center mb-3">
+                                <div class="display-6 text-danger mb-2"><i class="fas fa-hourglass-end"></i></div>
+                                <h4 class="fw-bold mb-1" id="modalTiempoCumplidoEstacion">Estación</h4>
+                                <p class="text-muted mb-0" id="modalTiempoCumplidoSala">Sala</p>
+                            </div>
+                            <div class="alert alert-danger border-0 mb-3">
+                                <div class="fw-semibold" id="modalTiempoCumplidoMensaje">La estación agotó su tiempo.</div>
+                                <small class="d-block mt-2" id="modalTiempoCumplidoDetalle">Se seguirá emitiendo un pitido por cada minuto extra.</small>
+                            </div>
+                            <div class="row g-2 text-center small">
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="text-muted text-uppercase mb-1">Cliente</div>
+                                        <div class="fw-semibold" id="modalTiempoCumplidoCliente">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="text-muted text-uppercase mb-1">Estado</div>
+                                        <div class="fw-semibold text-danger" id="modalTiempoCumplidoEstado">Tiempo cumplido</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer border-0 pt-0">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                            <button type="button" class="btn btn-outline-primary" id="btnModalTiempoCumplidoAgregar">
+                                <i class="fas fa-plus-circle me-1"></i>Agregar tiempo
+                            </button>
+                            <button type="button" class="btn btn-danger" id="btnModalTiempoCumplidoFinalizar">
+                                <i class="fas fa-stop me-1"></i>Finalizar sesión
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modalWrapper.firstElementChild);
+        modalElement = document.getElementById('modalTiempoCumplido');
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            this._modalAlertaTiempoCumplidoActiva = false;
+            this._procesarColaPopupTiempoCumplido();
+        });
+
+        return modalElement;
+    }
+
+    _mostrarPopupTiempoCumplido(sesion) {
+        if (!sesion?.id) return;
+        const yaEnCola = this._colaAlertasTiempoCumplido.some(item => item?.id === sesion.id);
+        if (yaEnCola) return;
+        this._colaAlertasTiempoCumplido.push(sesion);
+        this._procesarColaPopupTiempoCumplido();
+    }
+
+    _procesarColaPopupTiempoCumplido() {
+        if (this._modalAlertaTiempoCumplidoActiva) return;
+        const sesion = this._colaAlertasTiempoCumplido.shift();
+        if (!sesion?.id) return;
+
+        const modalElement = this._asegurarModalTiempoCumplido();
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+        const sala = this._obtenerSalaDeSesion(sesion);
+        const estacionTexto = sesion.estacion || 'Estación sin nombre';
+        const salaTexto = sala?.nombre || 'Sala sin nombre';
+        const clienteTexto = sesion.cliente || 'Sin cliente';
+
+        const tituloEstacion = modalElement.querySelector('#modalTiempoCumplidoEstacion');
+        const textoSala = modalElement.querySelector('#modalTiempoCumplidoSala');
+        const textoMensaje = modalElement.querySelector('#modalTiempoCumplidoMensaje');
+        const textoDetalle = modalElement.querySelector('#modalTiempoCumplidoDetalle');
+        const textoCliente = modalElement.querySelector('#modalTiempoCumplidoCliente');
+        const btnAgregar = modalElement.querySelector('#btnModalTiempoCumplidoAgregar');
+        const btnFinalizar = modalElement.querySelector('#btnModalTiempoCumplidoFinalizar');
+
+        if (tituloEstacion) tituloEstacion.textContent = estacionTexto;
+        if (textoSala) textoSala.textContent = salaTexto;
+        if (textoMensaje) textoMensaje.textContent = `La estación ${estacionTexto} agotó su tiempo.`;
+        if (textoDetalle) textoDetalle.textContent = 'Seguirá sonando un pitido por cada minuto adicional mientras la sesión siga activa.';
+        if (textoCliente) textoCliente.textContent = clienteTexto;
+
+        if (btnAgregar) {
+            btnAgregar.onclick = () => {
+                modal.hide();
+                this.agregarTiempo(sesion.id);
+            };
+        }
+
+        if (btnFinalizar) {
+            btnFinalizar.onclick = () => {
+                modal.hide();
+                this.finalizarSesion(sesion.id);
+            };
+        }
+
+        this._modalAlertaTiempoCumplidoActiva = true;
+        modal.show();
     }
     
     async inicializarDatos() {
@@ -1678,10 +1812,7 @@ class GestorSalas {
                 }
 
                 // Reiniciar tracking de alarmas si existía
-                try {
-                    this._alertasTiempoDisparadas && this._alertasTiempoDisparadas.delete(sesion.id);
-                    this._ultimaAlarmaMinuto && this._ultimaAlarmaMinuto.delete(sesion.id);
-                } catch (_) {}
+                this._reiniciarAlertasTiempoCumplido(sesion.id);
 
                 return;
             }
@@ -1718,8 +1849,7 @@ class GestorSalas {
                         const estadoElement = contenedorTiempo.querySelector('.tiempo-estado');
                         if (estadoElement) estadoElement.textContent = 'Tiempo restante';
                     }
-                    // Reiniciar tracking de minuto si volvió a estado normal (por extensión de tiempo)
-                    this._ultimaAlarmaMinuto.delete(sesion.id);
+                    this._reiniciarAlertasTiempoCumplido(sesion.id);
                 }
             }
             
@@ -1752,8 +1882,7 @@ class GestorSalas {
                             estadoElement.textContent = 'Tiempo restante';
                         }
                     }
-            // Reiniciar tracking de minuto (por extensión)
-            this._ultimaAlarmaMinuto.delete(sesion.id);
+                    this._reiniciarAlertasTiempoCumplido(sesion.id);
                 }
             }
 
@@ -1777,7 +1906,7 @@ class GestorSalas {
                     elementoMobile.classList.remove('text-danger');
                     elementoMobile.classList.add('text-success');
                     if (statusMobile) statusMobile.textContent = 'Restante';
-                    this._ultimaAlarmaMinuto.delete(sesion.id);
+                    this._reiniciarAlertasTiempoCumplido(sesion.id);
                 }
             }
         });

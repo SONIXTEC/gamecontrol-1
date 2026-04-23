@@ -44,6 +44,7 @@ const METODOS = {
   transferencia: { label: '🏦 Transferencia',   cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
   digital:       { label: '📱 QR/Digital',      cls: 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400' },
   parcial:       { label: '🔀 Parcial',          cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+  anulado:       { label: '🚫 Anulado',          cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
 };
 
 function MetodoBadge({ metodo }) {
@@ -190,7 +191,9 @@ export default function TablaVentas({
                 return (
                   <tr
                     key={v.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                    className={`hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors ${
+                      v.estado === 'anulada' ? 'opacity-60' : ''
+                    }`}
                   >
                     {/* # sesión */}
                     <td className="px-4 py-3">
@@ -242,7 +245,7 @@ export default function TablaVentas({
 
                     {/* Método */}
                     <td className="px-4 py-3">
-                      <MetodoBadge metodo={v.metodo_pago} />
+                      <MetodoBadge metodo={v.estado === 'anulada' ? 'anulado' : v.metodo_pago} />
                     </td>
 
                     {/* Total */}

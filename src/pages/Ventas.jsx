@@ -178,10 +178,89 @@ export default function Ventas() {
 
   // ── Eliminar venta ────────────────────────────────────────────────
   async function eliminar(id) {
-    if (!window.confirm('¿Eliminar esta venta? Esta acción no se puede deshacer.')) return;
+    if (!window.confirm('¿Eliminar esta venta? Se devolverá el stock de los productos. Esta acción no se puede deshacer.')) return;
     try {
+      // 1. Obtener la venta completa para saber si tiene sesion_id
+      const venta = ventas.find((v) => v.id === id);
+
+      // 2. Recolectar productos a devolver desde dos fuentes posibles:
+      //    A) venta_items (ventas de tienda POS)
+      //    B) sesiones.productos JSON (ventas de sesión gaming)
+      const productosADevolver = []; // [{ producto_id, cantidad, precio_unitario }]
+
+      // Fuente A: venta_items
+      try {
+        const items = await db.select('venta_items', { filtros: { venta_id: id } });
+        if (Array.isArray(items)) {
+          items
+            .filter((i) => i.producto_id && Number(i.cantidad) > 0)
+            .forEach((i) => productosADevolver.push({
+              producto_id: i.producto_id,
+              cantidad: Number(i.cantidad),
+              precio_unitario: i.precio_unitario ?? 0,
+            }));
+        }
+      } catch (e) {
+        console.warn('No se pudieron leer venta_items:', e.message);
+      }
+
+      // Fuente B: sesiones.productos JSON (solo si la venta tiene sesion_id y venta_items estaba vacío)
+      if (productosADevolver.length === 0 && venta?.sesion_id) {
+        try {
+          const sesionData = await db.select('sesiones', { filtros: { id: venta.sesion_id } });
+          const sesion = Array.isArray(sesionData) ? sesionData[0] : null;
+          const prods = sesion?.productos;
+          if (Array.isArray(prods)) {
+            prods
+              .filter((p) => p.id && Number(p.cantidad) > 0)
+              .forEach((p) => productosADevolver.push({
+                producto_id: p.id,
+                cantidad: Number(p.cantidad),
+                precio_unitario: p.precio ?? 0,
+              }));
+          }
+        } catch (e) {
+          console.warn('No se pudieron leer productos de sesión:', e.message);
+        }
+      }
+
+      // 3. Devolver stock de cada producto
+      if (productosADevolver.length > 0) {
+        await Promise.all(
+          productosADevolver.map(async ({ producto_id, cantidad, precio_unitario }) => {
+            try {
+              const [prod] = (await db.select('productos', { filtros: { id: producto_id } })) || [];
+              if (!prod) return;
+              const stockAnterior = prod.stock ?? 0;
+              const stockNuevo = stockAnterior + cantidad;
+              await db.update('productos', producto_id, { stock: stockNuevo });
+              await db.insert('movimientos_stock', {
+                producto_id,
+                tipo: 'devolucion',
+                cantidad,
+                stock_anterior: stockAnterior,
+                stock_nuevo: stockNuevo,
+                costo_unitario: precio_unitario,
+                valor_total: precio_unitario * cantidad,
+                motivo: `Devolución por eliminación de venta ${id}`,
+                referencia: id,
+                fecha_movimiento: new Date().toISOString(),
+              }).catch(() => {});
+            } catch (err) {
+              console.error('Error devolviendo stock de producto', producto_id, err);
+            }
+          })
+        );
+      }
+
+      // 4. Eliminar la venta (los venta_items se eliminan en cascada)
       await db.remove('ventas', id);
-      exito('Venta eliminada');
+
+      if (productosADevolver.length > 0) {
+        exito(`Venta eliminada. Stock devuelto: ${productosADevolver.length} producto(s)`);
+      } else {
+        exito('Venta eliminada (sin productos de stock asociados)');
+      }
       cargar();
     } catch (err) {
       notifError(err.message);

@@ -9,6 +9,7 @@ import ModalAgregarTiempo from './ModalAgregarTiempo';
 import ModalTienda from './ModalTienda';
 import ModalFinalizarSesion from './ModalFinalizarSesion';
 import ModalTrasladarSesion from './ModalTrasladarSesion';
+import ModalTiempoCumplido from './ModalTiempoCumplido';
 
 /**
  * @param {{
@@ -27,6 +28,21 @@ export default function GridSalas({ salas = [], sesiones = [] }) {
   const [finalizarData, setFinalizarData] = useState(null); // { sesion, sala }
   // Modal trasladar sesión
   const [trasladarData, setTrasladarData] = useState(null); // { sesion, sala }
+
+  // Cola de alertas "tiempo cumplido"
+  const [colaVencidas, setColaVencidas] = useState([]); // sesiones
+  const sesionVencidaActiva = colaVencidas[0] ?? null;
+
+  function handleVencido(sesion) {
+    setColaVencidas((prev) => {
+      const yaEsta = prev.some((s) => s.id === sesion.id);
+      return yaEsta ? prev : [...prev, sesion];
+    });
+  }
+
+  function cerrarAlertaVencida() {
+    setColaVencidas((prev) => prev.slice(1));
+  }
 
   const encontrarSala = (salaId) => salas.find((s) => s.id === salaId);
 
@@ -69,6 +85,7 @@ export default function GridSalas({ salas = [], sesiones = [] }) {
             onAgregarProducto={handleAgregarProducto}
             onFinalizar={handleFinalizar}
             onTrasladar={handleTrasladar}
+            onVencido={handleVencido}
           />
         ))}
       </div>
@@ -104,6 +121,15 @@ export default function GridSalas({ salas = [], sesiones = [] }) {
         salas={salas}
         sesiones={sesiones}
         onCerrar={() => setTrasladarData(null)}
+      />
+
+      {/* Popup de tiempo cumplido (cola) */}
+      <ModalTiempoCumplido
+        sesion={sesionVencidaActiva}
+        sala={sesionVencidaActiva ? encontrarSala(sesionVencidaActiva.salaId) : null}
+        onCerrar={cerrarAlertaVencida}
+        onAgregarTiempo={(s) => { cerrarAlertaVencida(); handleAgregarTiempo(s); }}
+        onFinalizar={(s) => { cerrarAlertaVencida(); handleFinalizar(s); }}
       />
     </>
   );

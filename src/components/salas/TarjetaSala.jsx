@@ -3,7 +3,7 @@
 // Muestra la sala con su grid de estaciones (libre / ocupada)
 // ===================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Play, Clock, ShoppingCart, Square, ArrowLeftRight } from 'lucide-react';
 import ConsolaBadge from '../gaming/ConsolaBadge';
 
@@ -24,10 +24,46 @@ function formatCOP(valor) {
   }).format(valor || 0);
 }
 
+/** Reproduce un beep usando Web Audio API */
+function beep(freq = 900, dur = 300, vol = 0.25) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value = vol;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.start(now);
+    osc.stop(now + dur / 1000);
+    setTimeout(() => ctx.close(), dur + 100);
+  } catch (_) {}
+}
+
+function beepTriple() {
+  beep(950, 300);
+  setTimeout(() => beep(800, 300), 420);
+  setTimeout(() => beep(700, 400), 840);
+}
+
 /** Temporizador en tiempo real para una sesión */
-function useTemporizador(sesion) {
+function useTemporizador(sesion, onVencido) {
   const [display, setDisplay] = useState('');
   const [excedido, setExcedido] = useState(false);
+  const alertadoRef = useRef(false);      // evita disparar el popup más de una vez
+  const ultimoMinutoRef = useRef(-1);     // último minuto excedido con beep
+
+  // Reiniciar tracking cuando se agrega tiempo (tiempoAdicional cambia)
+  const tiempoTotal =
+    (sesion?.tiempoOriginal || sesion?.tiempo || 60) + (sesion?.tiempoAdicional || 0);
+  useEffect(() => {
+    alertadoRef.current = false;
+    ultimoMinutoRef.current = -1;
+  }, [tiempoTotal]);
 
   useEffect(() => {
     if (!sesion) return;
@@ -47,13 +83,28 @@ function useTemporizador(sesion) {
         return;
       }
 
-      const tiempoBase = (sesion.tiempoOriginal || sesion.tiempo || 60) + (sesion.tiempoAdicional || 0);
-      const finMs = inicio + tiempoBase * 60 * 1000;
+      const tiempoBaseMs =
+        ((sesion.tiempoOriginal || sesion.tiempo || 60) + (sesion.tiempoAdicional || 0)) * 60 * 1000;
+      const finMs = inicio + tiempoBaseMs;
       const restanteMs = finMs - ahora;
 
       if (restanteMs <= 0) {
         setDisplay('00:00:00');
         setExcedido(true);
+
+        // Popup + beep inicial (una sola vez)
+        if (!alertadoRef.current) {
+          alertadoRef.current = true;
+          beepTriple();
+          if (typeof onVencido === 'function') onVencido(sesion);
+        }
+
+        // Beep por cada minuto excedido nuevo
+        const minutosExcedidos = Math.floor(Math.abs(restanteMs) / 60000);
+        if (minutosExcedidos > ultimoMinutoRef.current) {
+          ultimoMinutoRef.current = minutosExcedidos;
+          if (minutosExcedidos > 0) beep(920, 220, 0.22);
+        }
       } else {
         const seg = Math.floor(restanteMs / 1000);
         const h = Math.floor(seg / 3600);
@@ -67,14 +118,14 @@ function useTemporizador(sesion) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [sesion]);
+  }, [sesion, onVencido]);
 
   return { display, excedido };
 }
 
 /** Estación ocupada */
-function EstacionOcupada({ sesion, onAgregarTiempo, onAgregarProducto, onFinalizar, onTrasladar }) {
-  const { display, excedido } = useTemporizador(sesion);
+function EstacionOcupada({ sesion, onAgregarTiempo, onAgregarProducto, onFinalizar, onTrasladar, onVencido }) {
+  const { display, excedido } = useTemporizador(sesion, onVencido);
   const esLibre = sesion.modo === 'libre';
 
   return (
@@ -167,6 +218,7 @@ function EstacionLibre({ salaId, estacion, onIniciar }) {
  *   onAgregarProducto: (sesion) => void,
  *   onFinalizar: (sesion) => void,
  *   onTrasladar: (sesion) => void,
+ *   onVencido: (sesion) => void,
  * }} props
  */
 export default function TarjetaSala({
@@ -177,6 +229,7 @@ export default function TarjetaSala({
   onAgregarProducto,
   onFinalizar,
   onTrasladar,
+  onVencido,
 }) {
   const sesionesActivas = (sesiones || []).filter((s) => s.salaId === sala.id && !s.finalizada);
   const ocupadas = sesionesActivas.length;
@@ -225,6 +278,7 @@ export default function TarjetaSala({
               onAgregarProducto={onAgregarProducto}
               onFinalizar={onFinalizar}
               onTrasladar={onTrasladar}
+              onVencido={onVencido}
             />
           ) : (
             <EstacionLibre

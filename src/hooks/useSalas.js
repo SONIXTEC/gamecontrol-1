@@ -269,6 +269,67 @@ export function useSalas() {
     [sesiones, cargarSesionesActivas]
   );
 
+  // ── Agregar MÚLTIPLES productos a sesión (una sola escritura a DB) ──
+  // Evita la race condition de llamar agregarProducto en loop,
+  // donde cada iteración leía el estado viejo y pisaba los anteriores.
+  const agregarProductos = useCallback(
+    async (sesionId, nuevosItems) => {
+      // nuevosItems: [{ id, nombre, precio, cantidad, subtotal, categoria }]
+      const sesion = sesiones.find((s) => s.id === sesionId);
+      if (!sesion) return;
+
+      const productosActualizados = [...(sesion.productos || []), ...nuevosItems];
+      const nuevoTotalProductos = productosActualizados.reduce(
+        (sum, p) => sum + (p.subtotal || p.cantidad * p.precio),
+        0
+      );
+
+      // 1. Una sola escritura a la sesión con todos los productos juntos
+      await db.update('sesiones', sesionId, {
+        productos: productosActualizados,
+        total_productos: nuevoTotalProductos,
+      });
+
+      // 2. Descontar stock y registrar movimientos (en paralelo)
+      await Promise.all(
+        nuevosItems
+          .filter((p) => {
+            const esBono = p.categoria && p.categoria.toLowerCase() === 'bonos';
+            return !esBono && p.id;
+          })
+          .map(async (producto) => {
+            try {
+              const [prodActual] = (await db.select('productos', {
+                filtros: { id: producto.id },
+              })) || [];
+              if (!prodActual) return;
+              const stockAnterior = prodActual.stock ?? 0;
+              const cantidad = producto.cantidad || 1;
+              const stockNuevo = Math.max(0, stockAnterior - cantidad);
+              await db.update('productos', producto.id, { stock: stockNuevo });
+              await db.insert('movimientos_stock', {
+                producto_id: producto.id,
+                tipo: 'venta',
+                cantidad,
+                stock_anterior: stockAnterior,
+                stock_nuevo: stockNuevo,
+                costo_unitario: producto.precio,
+                valor_total: (producto.precio || 0) * cantidad,
+                motivo: `Venta en sesión ${sesion.estacion || ''}`,
+                referencia: sesionId,
+                fecha_movimiento: new Date().toISOString(),
+              });
+            } catch (err) {
+              console.error('Error descontando stock de', producto.nombre, err);
+            }
+          })
+      );
+
+      await cargarSesionesActivas();
+    },
+    [sesiones, cargarSesionesActivas]
+  );
+
   // ── Trasladar sesión a otra estación ──────────────────────────────
   const trasladarSesion = useCallback(
     async (sesionId, nuevaSalaId, nuevaEstacion) => {
@@ -376,6 +437,48 @@ export function useSalas() {
     [sesiones, getAuthUid, cargarSesionesActivas]
   );
 
+  // ── Anular sesión (sin cobro, motivo obligatorio) ─────────────────
+  const anularSesion = useCallback(
+    async (sesionId, { motivo } = {}) => {
+      if (!motivo?.trim()) throw new Error('El motivo de anulación es obligatorio.');
+      const sesion = sesiones.find((s) => s.id === sesionId);
+      if (!sesion) throw new Error('Sesión no encontrada.');
+      if (sesion.finalizada) throw new Error('La sesión ya fue finalizada.');
+
+      const fechaCierre = new Date().toISOString();
+      const notasFinal = [
+        sesion.notas || '',
+        `[ANULADA] ${motivo.trim()}`,
+      ].filter(Boolean).join('\n');
+
+      await db.update('sesiones', sesionId, {
+        fecha_fin: fechaCierre,
+        estado: 'cancelada',
+        finalizada: true,
+        metodo_pago: null,
+        total_tiempo: 0,
+        total_productos: 0,
+        total_general: 0,
+        notas: notasFinal,
+      });
+
+      await _registrarVentaContable(sesion, {
+        authUid: null,
+        fechaCierre,
+        metodoPago: 'anulado',
+        estadoOverride: 'anulada',
+        tarifaTiempo: 0,
+        totalProductos: 0,
+        totalGeneral: 0,
+        notasFinal,
+        montosParciales: null,
+      });
+
+      await cargarSesionesActivas();
+    },
+    [sesiones, cargarSesionesActivas]
+  );
+
   // ── Crear nueva sala ──────────────────────────────────────────────
   const crearSala = useCallback(async ({ nombre, tipo, numEstaciones, prefijo }) => {
     const nuevaSala = {
@@ -415,8 +518,10 @@ export function useSalas() {
     abrirSesion,
     agregarTiempo,
     agregarProducto,
+    agregarProductos,
     trasladarSesion,
     finalizarSesion,
+    anularSesion,
     crearSala,
     actualizarTarifasSala,
   };
@@ -434,6 +539,7 @@ async function _registrarVentaContable(sesion, opts) {
     authUid,
     fechaCierre,
     metodoPago,
+    estadoOverride,
     tarifaTiempo,
     totalProductos,
     totalGeneral,
@@ -453,7 +559,7 @@ async function _registrarVentaContable(sesion, opts) {
     fecha_inicio: sesion.fecha_inicio || null,
     fecha_cierre: fechaCierre,
     metodo_pago: metodoPago,
-    estado: 'cerrada',
+    estado: estadoOverride ?? 'cerrada',
     subtotal_tiempo: tarifaTiempo,
     subtotal_productos: totalProductos,
     descuento: sesion.descuento || 0,
@@ -479,6 +585,7 @@ async function _registrarVentaContable(sesion, opts) {
   try {
     await db.insert('ventas', ventaData);
   } catch (err) {
+    console.error('❌ Error al registrar venta contable:', err?.message || err, ventaData);
     const msg = (err?.message || '').toLowerCase();
     // Solo ignorar si es duplicado por UNIQUE(sesion_id)
     if (!msg.includes('duplicate') && !msg.includes('unique') && !msg.includes('already exists')) {

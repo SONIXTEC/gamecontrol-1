@@ -26,7 +26,7 @@ function formatCOP(valor) {
  * }} props
  */
 export default function ModalAgregarProductos({ sesion, sala, onCerrar }) {
-  const { agregarProducto } = useSalas();
+  const { agregarProductos } = useSalas();
   const { exito, error: notifError } = useNotifications();
 
   const [productos, setProductos] = useState([]);
@@ -78,18 +78,15 @@ export default function ModalAgregarProductos({ sesion, sala, onCerrar }) {
     }
     setCargando(true);
     try {
-      for (const p of seleccionados) {
-        const cantidad = cantidades[p.id];
-        const subtotal = p.precio * cantidad;
-        await agregarProducto(sesion.id, {
-          id: p.id,
-          nombre: p.nombre,
-          precio: p.precio,
-          cantidad,
-          subtotal,
-          categoria: p.categoria,
-        });
-      }
+      const items = seleccionados.map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        precio: p.precio,
+        cantidad: cantidades[p.id],
+        subtotal: p.precio * cantidades[p.id],
+        categoria: p.categoria,
+      }));
+      await agregarProductos(sesion.id, items);
       exito(`${itemsCount} producto(s) agregados a ${sesion.estacion}`);
       onCerrar();
     } catch (err) {

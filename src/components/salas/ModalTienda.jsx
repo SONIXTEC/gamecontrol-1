@@ -38,7 +38,7 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
   const [procesandoPago, setProcesandoPago] = useState(false);
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const { exito, error: notifError } = useNotifications();
-  const { agregarProducto } = useSalas();
+  const { agregarProductos } = useSalas();
   
   // Determinar si estamos en modo sesión
   const modoSesion = sesion !== null && sala !== null;
@@ -136,18 +136,17 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
 
     setProcesandoPago(true);
     try {
-      // Si estamos en modo sesión, agregar productos a la sesión
+      // Si estamos en modo sesión, agregar todos los productos en una sola operación
       if (modoSesion) {
-        for (const item of carrito) {
-          await agregarProducto(sesion.id, {
-            id: item.id,
-            nombre: item.nombre,
-            precio: item.precio,
-            cantidad: item.cantidad,
-            subtotal: item.precio * item.cantidad,
-            categoria: item.categoria,
-          });
-        }
+        const items = carrito.map((item) => ({
+          id: item.id,
+          nombre: item.nombre,
+          precio: item.precio,
+          cantidad: item.cantidad,
+          subtotal: item.precio * item.cantidad,
+          categoria: item.categoria,
+        }));
+        await agregarProductos(sesion.id, items);
         
         const totalItems = calcularTotalItems();
         exito(`${totalItems} producto(s) agregados a ${sesion.estacion} - ${sala.nombre}`);
@@ -180,6 +179,7 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
 
         // Registrar venta contable en tabla ventas
         try {
+          const subtotalProductos = carrito.reduce((s, i) => s + Math.abs(i.precio) * i.cantidad, 0);
           const ventaRecord = await db.insert('ventas', {
             sesion_id:          null,
             sala_id:            null,
@@ -191,40 +191,36 @@ export default function ModalTienda({ abierto, onCerrar, sesion = null, sala = n
             metodo_pago:        metodoPago,
             estado:             'cerrada',
             subtotal_tiempo:    0,
-            subtotal_productos: carrito.reduce((s, i) => s + Math.abs(i.precio) * i.cantidad, 0),
+            subtotal_productos: subtotalProductos,
             descuento:          0,
             total:              Math.max(0, totalVenta),
             notas:              'Venta directa POS',
-            productos:          JSON.stringify(
-              carrito.map(i => ({
-                nombre:   i.nombre,
-                cantidad: i.cantidad,
-                precio:   i.precio,
-                subtotal: i.precio * i.cantidad,
-                categoria: i.categoria,
-              }))
-            ),
           });
 
-          // Insertar venta_items si hay ID de venta
+          // Insertar venta_items
           const ventaId = ventaRecord?.id ?? ventaRecord?.data?.id ?? null;
           if (ventaId) {
             let lineNo = 1;
             for (const item of carrito) {
-              await db.insert('venta_items', {
-                venta_id:       ventaId,
-                line_no:        lineNo++,
-                tipo:           'producto',
-                producto_id:    item.id,
-                descripcion:    item.nombre,
-                cantidad:       item.cantidad,
-                precio_unitario: item.precio,
-                subtotal:       item.precio * item.cantidad,
-              }).catch(() => {}); // venta_items es opcional
+              try {
+                await db.insert('venta_items', {
+                  venta_id:        ventaId,
+                  line_no:         lineNo++,
+                  tipo:            'producto',
+                  producto_id:     item.id,
+                  descripcion:     item.nombre,
+                  cantidad:        item.cantidad,
+                  precio_unitario: item.precio,
+                  subtotal:        item.precio * item.cantidad,
+                });
+              } catch (itemErr) {
+                console.warn('⚠️ No se pudo insertar venta_item:', itemErr.message);
+              }
             }
           }
         } catch (ventaErr) {
-          console.warn('⚠️ Venta procesada pero no se pudo registrar en ventas:', ventaErr.message);
+          console.error('❌ No se pudo registrar venta contable:', ventaErr.message);
+          notifError('⚠️ Stock descontado pero la venta no quedó registrada en el historial. Verifica permisos en Supabase.');
         }
 
         exito(`Venta registrada: ${carrito.length} producto(s) — ${formatCOP(Math.max(0, totalVenta))}`);
