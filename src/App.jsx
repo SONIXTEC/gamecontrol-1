@@ -4,6 +4,7 @@ import Layout from './components/layout/Layout';
 
 import Login      from './pages/Login';
 import TVDisplay  from './pages/TVDisplay';
+import EventLive  from './pages/EventLive';
 import Dashboard  from './pages/Dashboard';
 import Salas      from './pages/Salas';
 import Ventas     from './pages/Ventas';
@@ -28,7 +29,8 @@ export default function App() {
       <Routes>
         {/* Pública */}
         <Route path="/login" element={<Login />} />
-        <Route path="/tv"    element={<TVDisplay />} />
+        <Route path="/tv"         element={<TVDisplay />} />
+        <Route path="/event-live"  element={<EventLive />} />
 
         {/* Privadas con Layout */}
         <Route

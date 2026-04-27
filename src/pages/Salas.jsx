@@ -195,6 +195,22 @@ export default function Salas() {
               <span className="hidden sm:inline font-medium">Ver TV</span>
             </button>
             <button
+              onClick={() => window.open('/event-live', '_blank')}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl border transition-all font-medium"
+              style={{
+                background: 'linear-gradient(135deg, rgba(124,58,237,0.15) 0%, rgba(239,68,68,0.1) 100%)',
+                border: '1px solid rgba(239,68,68,0.35)',
+                color: '#f87171',
+                boxShadow: '0 0 12px rgba(239,68,68,0.1)',
+              }}
+              onMouseOver={e => { e.currentTarget.style.boxShadow = '0 0 20px rgba(239,68,68,0.25)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.6)'; }}
+              onMouseOut={e => { e.currentTarget.style.boxShadow = '0 0 12px rgba(239,68,68,0.1)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)'; }}
+            >
+              <span className="text-base leading-none">⚡</span>
+              <span className="hidden sm:inline">Event Live</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            </button>
+            <button
               onClick={() => navigate('/ajustes', { state: { seccion: 'tarifas' } })}
               className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl bg-[#1A1C23] border border-white/5 
                 text-blue-400 hover:border-blue-500/30 hover:shadow-[0_0_15px_rgba(59,130,246,0.2)] transition-all"
