@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import Layout from './components/layout/Layout';
 
 import Login      from './pages/Login';
+import TVDisplay  from './pages/TVDisplay';
 import Dashboard  from './pages/Dashboard';
 import Salas      from './pages/Salas';
 import Ventas     from './pages/Ventas';
@@ -27,6 +28,7 @@ export default function App() {
       <Routes>
         {/* Pública */}
         <Route path="/login" element={<Login />} />
+        <Route path="/tv"    element={<TVDisplay />} />
 
         {/* Privadas con Layout */}
         <Route

@@ -13,7 +13,7 @@ import ModalFinalizarSesion from '../components/salas/ModalFinalizarSesion';
 import ModalNuevaSala from '../components/salas/ModalNuevaSala';
 import ModalTienda from '../components/salas/ModalTienda';
 import ModalTrasladarSesion from '../components/salas/ModalTrasladarSesion';
-import { RefreshCw, Monitor, Users, Zap, Gamepad2, DollarSign, Store, Plus, Search } from 'lucide-react';
+import { RefreshCw, Monitor, Users, Zap, Gamepad2, DollarSign, Store, Plus, Search, Tv2 } from 'lucide-react';
 
 function formatCOP(valor) {
   return new Intl.NumberFormat('es-CO', {
@@ -186,6 +186,14 @@ export default function Salas() {
             <span className="kpi-number">Salas Gaming</span>
           </h2>
           <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={() => window.open('/tv', '_blank')}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl bg-[#1A1C23] border border-white/5 
+                text-purple-400 hover:border-purple-500/30 hover:shadow-[0_0_15px_rgba(168,85,247,0.2)] transition-all"
+            >
+              <Tv2 size={18} />
+              <span className="hidden sm:inline font-medium">Ver TV</span>
+            </button>
             <button
               onClick={() => navigate('/ajustes', { state: { seccion: 'tarifas' } })}
               className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl bg-[#1A1C23] border border-white/5 
