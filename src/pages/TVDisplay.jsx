@@ -296,6 +296,7 @@ export default function TVDisplay() {
       if (!error && data) {
         const enriched = data.map((s) => ({
           ...s,
+          modo: (s.notas || '').includes('[TIEMPO_LIBRE]') ? 'libre' : 'fijo',
           sala_nombre: s.salas?.nombre || '',
         }));
         setSesiones(enriched);

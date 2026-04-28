@@ -4,7 +4,9 @@
 // ===================================================================
 
 import { useState, useEffect } from 'react';
-import { X, Save, User, MapPin, Calendar, CreditCard, FileText, Banknote, CreditCard as CardIcon, Building2, Smartphone } from 'lucide-react';
+import { X, Save, User, MapPin, Calendar, CreditCard, FileText, Banknote, CreditCard as CardIcon, Building2, Smartphone, Plus, Trash2, ShoppingCart } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
+import * as db from '../../lib/databaseService';
 
 function toLocalDatetime(iso) {
   if (!iso) return '';
@@ -50,11 +52,73 @@ export default function ModalEditarVenta({ venta, salas = [], onGuardar, onCerra
     notas:         '',
   });
   const [guardando, setGuardando] = useState(false);
+  const [productos, setProductos] = useState([]);
+  const [productosOriginales, setProductosOriginales] = useState([]);
+  const [cargandoProds, setCargandoProds] = useState(false);
+  const [inventario, setInventario] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [mostrarSelector, setMostrarSelector] = useState(false);
   const esParcial = form.metodo_pago === 'parcial';
 
   // Inicializar con datos actuales de la venta
   useEffect(() => {
     if (!venta) return;
+
+    // Cargar productos desde venta_items
+    async function cargarProductos() {
+      setCargandoProds(true);
+      try {
+        // Primero intentar venta_items
+        const { data: items } = await supabase
+          .from('venta_items')
+          .select('nombre, descripcion, cantidad, precio_unitario, subtotal, producto_id')
+          .eq('venta_id', venta.id);
+
+        if (items && items.length > 0) {
+          const mapeados = items.map(i => ({
+            nombre:      i.nombre ?? i.descripcion ?? '',
+            cantidad:    i.cantidad ?? 1,
+            precio:      i.precio_unitario ?? 0,
+            producto_id: i.producto_id ?? null,
+          }));
+          setProductos(mapeados);
+          setProductosOriginales(mapeados.map(p => ({ ...p })));
+        } else {
+          // Fallback: productos JSON en la propia venta o en la sesión
+          const prods = Array.isArray(venta.productos) ? venta.productos : [];
+          if (prods.length > 0) {
+            const mapeados = prods.map(p => ({ nombre: p.nombre ?? '', cantidad: p.cantidad ?? 1, precio: p.precio ?? 0, producto_id: p.id ?? null }));
+            setProductos(mapeados);
+            setProductosOriginales(mapeados.map(p => ({ ...p })));
+          } else if (venta.sesion_id) {
+            const { data: sesion } = await supabase
+              .from('sesiones')
+              .select('productos')
+              .eq('id', venta.sesion_id)
+              .single();
+            const sp = Array.isArray(sesion?.productos) ? sesion.productos : [];
+            const mapeados = sp.map(p => ({ nombre: p.nombre ?? '', cantidad: p.cantidad ?? 1, precio: p.precio ?? 0, producto_id: p.id ?? null }));
+            setProductos(mapeados);
+            setProductosOriginales(mapeados.map(p => ({ ...p })));
+          } else {
+            setProductos([]);
+            setProductosOriginales([]);
+          }
+        }
+      } catch {
+        setProductos([]);
+        setProductosOriginales([]);
+      } finally {
+        setCargandoProds(false);
+      }
+    }
+
+    cargarProductos();
+
+    // Cargar inventario disponible
+    db.select('productos', { ordenPor: { campo: 'nombre', direccion: 'asc' } })
+      .then(data => setInventario((data ?? []).filter(p => p.stock > 0)));
+
     setForm({
       cliente:       venta.cliente ?? '',
       sala_id:       venta.sala_id ?? '',
@@ -98,6 +162,14 @@ export default function ModalEditarVenta({ venta, salas = [], onGuardar, onCerra
       metodo_pago:  form.metodo_pago,
       total:        parseFloat(form.total) || 0,
       notas:        form.notas.trim() || null,
+      productos:    productos.filter(p => p.nombre?.trim()).map(p => ({
+        nombre:      p.nombre.trim(),
+        cantidad:    parseFloat(p.cantidad) || 1,
+        precio:      parseFloat(p.precio) || 0,
+        subtotal:    (parseFloat(p.cantidad) || 1) * (parseFloat(p.precio) || 0),
+        producto_id: p.producto_id ?? null,
+      })),
+      _productosOriginales: productosOriginales,
     };
 
     // Montos según método
@@ -287,6 +359,116 @@ export default function ModalEditarVenta({ venta, salas = [], onGuardar, onCerra
               </p>
             </div>
           )}
+
+          {/* ── Productos ── */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                <ShoppingCart size={12} /> Productos adicionales
+              </p>
+              <button
+                type="button"
+                onClick={() => { setMostrarSelector(true); setBusqueda(''); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+              >
+                <Plus size={12} /> Agregar
+              </button>
+            </div>
+
+            {/* Selector de inventario */}
+            {mostrarSelector && (
+              <div className="border border-indigo-200 dark:border-indigo-700 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-3 space-y-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={busqueda}
+                  onChange={e => setBusqueda(e.target.value)}
+                  placeholder="Buscar producto del inventario..."
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {inventario
+                    .filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+                    .map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setProductos(prev => {
+                            const existe = prev.findIndex(x => x.producto_id === p.id);
+                            if (existe >= 0) {
+                              return prev.map((x, i) => i === existe ? { ...x, cantidad: parseFloat(x.cantidad) + 1 } : x);
+                            }
+                            return [...prev, { nombre: p.nombre, cantidad: 1, precio: p.precio ?? p.precio_venta ?? 0, producto_id: p.id }];
+                          });
+                          setMostrarSelector(false);
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-left transition-colors"
+                      >
+                        <span className="text-sm text-gray-900 dark:text-white">{p.nombre}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 whitespace-nowrap">
+                          ${((p.precio ?? p.precio_venta ?? 0)).toLocaleString('es-CO')} · Stock: {p.stock}
+                        </span>
+                      </button>
+                    ))
+                  }
+                  {inventario.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase())).length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-2">Sin resultados</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMostrarSelector(false)}
+                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            {cargandoProds && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2 animate-pulse">Cargando productos...</p>
+            )}
+
+            {!cargandoProds && productos.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-600 text-center py-2">Sin productos agregados</p>
+            )}
+
+            {productos.map((prod, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-900 dark:text-white truncate font-medium">{prod.nombre}</p>
+                  {prod.producto_id && (
+                    <p className="text-[10px] text-indigo-500 dark:text-indigo-400">Vinculado al inventario</p>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  value={prod.cantidad}
+                  onChange={e => setProductos(prev => prev.map((p, idx) => idx === i ? { ...p, cantidad: e.target.value } : p))}
+                  placeholder="Cant."
+                  className="w-16 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={prod.precio}
+                  onChange={e => setProductos(prev => prev.map((p, idx) => idx === i ? { ...p, precio: e.target.value } : p))}
+                  placeholder="Precio"
+                  className="w-24 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setProductos(prev => prev.filter((_, idx) => idx !== i))}
+                  className="p-2 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
 
           {/* ── Notas ── */}
           <Field label="Notas / Observaciones">

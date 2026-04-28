@@ -261,10 +261,33 @@ function TickerPromos({ promos = PROMOS_DEFAULT }) {
 
 // ── Área central de video ─────────────────────────────────────────────
 
+// Servicios que bloquean iframe por CSP — se abren en ventana nueva
+const BLOCKED_SERVICES = [
+  { pattern: /disneyplus\.com/i,   name: 'Disney+',      icon: '🏰' },
+  { pattern: /netflix\.com/i,      name: 'Netflix',       icon: '🎬' },
+  { pattern: /primevideo\.com/i,   name: 'Prime Video',   icon: '📦' },
+  { pattern: /hbomax\.com/i,       name: 'Max (HBO)',     icon: '📺' },
+  { pattern: /max\.com/i,          name: 'Max',           icon: '📺' },
+  { pattern: /paramountplus\.com/i,name: 'Paramount+',    icon: '⛰️' },
+  { pattern: /peacocktv\.com/i,    name: 'Peacock',       icon: '🦚' },
+  { pattern: /apple\.com\/tv/i,    name: 'Apple TV+',     icon: '🍎' },
+  { pattern: /crunchyroll\.com/i,  name: 'Crunchyroll',   icon: '🍥' },
+  { pattern: /espn\.com/i,         name: 'ESPN',          icon: '🏆' },
+  { pattern: /win\.tv/i,           name: 'Win Sports',    icon: '⚽' },
+];
+
+function detectBlocked(rawUrl) {
+  for (const s of BLOCKED_SERVICES) {
+    if (s.pattern.test(rawUrl)) return s;
+  }
+  return null;
+}
+
 function AreaVideo({ streamUrl }) {
   const [editando, setEditando] = useState(false);
   const [url, setUrl] = useState(streamUrl || '');
   const [embedUrl, setEmbedUrl] = useState('');
+  const [externalService, setExternalService] = useState(null); // { name, icon, url }
 
   // Convierte URLs de YouTube/Twitch a embed
   const toEmbed = (rawUrl) => {
@@ -284,7 +307,15 @@ function AreaVideo({ streamUrl }) {
   };
 
   const aplicar = () => {
-    setEmbedUrl(toEmbed(url));
+    const blocked = detectBlocked(url);
+    if (blocked) {
+      // Servicio que no permite iframe — mostrar panel de lanzamiento externo
+      setExternalService({ ...blocked, url });
+      setEmbedUrl('');
+    } else {
+      setExternalService(null);
+      setEmbedUrl(toEmbed(url));
+    }
     setEditando(false);
   };
 
@@ -299,14 +330,111 @@ function AreaVideo({ streamUrl }) {
       }}
     >
       {embedUrl ? (
-        <iframe
-          src={embedUrl}
-          className="w-full h-full"
-          frameBorder="0"
-          allow="autoplay; fullscreen; encrypted-media"
-          allowFullScreen
-          title="Stream en vivo"
-        />
+        <>
+          <iframe
+            src={embedUrl}
+            className="w-full h-full"
+            frameBorder="0"
+            allow="autoplay; fullscreen; encrypted-media"
+            allowFullScreen
+            title="Stream en vivo"
+          />
+          {/* Botón flotante para cambiar URL */}
+          <button
+            onClick={() => setEditando(true)}
+            className="absolute top-3 right-3 z-20 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            style={{
+              background: 'rgba(0,0,0,0.7)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.6)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            📡 Cambiar stream
+          </button>
+        </>
+      ) : externalService ? (
+        // Panel para servicios que bloquean iframe (Disney+, Netflix, etc.)
+        <div
+          className="flex-1 flex flex-col items-center justify-center gap-5 text-center px-8"
+          style={{
+            background: 'radial-gradient(ellipse at center, rgba(139,92,246,0.1) 0%, transparent 70%)',
+          }}
+        >
+          <div className="text-5xl">{externalService.icon}</div>
+          <div>
+            <p className="text-white font-black text-2xl mb-1">{externalService.name}</p>
+            <p className="text-white/35 text-sm leading-relaxed">
+              Este servicio usa protección DRM y no puede<br/>
+              mostrarse dentro de un iframe. Se abre en<br/>
+              una <strong className="text-white/60">ventana separada del navegador</strong>.
+            </p>
+          </div>
+
+          {/* Botones de acción */}
+          <div className="flex flex-col gap-3 w-full max-w-sm">
+            {/* Popup centrado — comportamiento de "mini navegador" */}
+            <button
+              onClick={() => {
+                const w = Math.floor(screen.width * 0.75);
+                const h = Math.floor(screen.height * 0.85);
+                const left = Math.floor((screen.width - w) / 2);
+                const top = Math.floor((screen.height - h) / 2);
+                window.open(
+                  externalService.url,
+                  `stream_${Date.now()}`,
+                  `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=yes,status=no`
+                );
+              }}
+              className="w-full px-6 py-3 rounded-xl text-sm font-black tracking-wide transition-all"
+              style={{
+                background: 'linear-gradient(135deg, rgba(139,92,246,0.35), rgba(59,130,246,0.35))',
+                border: '1px solid rgba(139,92,246,0.55)',
+                color: '#e0d7ff',
+                boxShadow: '0 0 28px rgba(139,92,246,0.3)',
+              }}
+              onMouseOver={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.55), rgba(59,130,246,0.55))'}
+              onMouseOut={e => e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.35), rgba(59,130,246,0.35))'}
+            >
+              🖥️ Abrir en ventana (75% pantalla)
+            </button>
+
+            {/* Pantalla completa */}
+            <button
+              onClick={() => window.open(externalService.url, '_blank')}
+              className="w-full px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.5)',
+              }}
+              onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+              onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+            >
+              ↗ Abrir en pestaña nueva
+            </button>
+
+            <button
+              onClick={() => { setExternalService(null); setEditando(true); }}
+              className="text-xs text-white/25 hover:text-white/55 transition-colors pt-1"
+            >
+              ← Cambiar stream
+            </button>
+          </div>
+
+          {/* Info servicios embebibles */}
+          <div
+            className="rounded-xl px-4 py-3 text-left w-full max-w-sm"
+            style={{ background: 'rgba(0,214,86,0.05)', border: '1px solid rgba(0,214,86,0.12)' }}
+          >
+            <p className="text-xs font-bold mb-1" style={{ color: 'rgba(0,214,86,0.7)' }}>
+              ✅ Servicios que sí se embeben aquí:
+            </p>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              YouTube · Twitch · y cualquier reproductor con iframe habilitado
+            </p>
+          </div>
+        </div>
       ) : (
         // Placeholder cuando no hay stream
         <div
@@ -328,7 +456,8 @@ function AreaVideo({ streamUrl }) {
           </div>
           <div className="text-center">
             <p className="text-white/30 text-xl font-bold mb-2">Pantalla de Evento</p>
-            <p className="text-white/20 text-sm">Pega un link de YouTube o Twitch para comenzar</p>
+            <p className="text-white/20 text-sm">YouTube · Twitch · o cualquier stream embebible</p>
+            <p className="text-white/10 text-xs mt-1">Disney+, Netflix y similares abren en pestaña nueva</p>
           </div>
           <button
             onClick={() => setEditando(true)}
@@ -347,22 +476,6 @@ function AreaVideo({ streamUrl }) {
         </div>
       )}
 
-      {/* Botón flotante para cambiar URL */}
-      {embedUrl && (
-        <button
-          onClick={() => setEditando(true)}
-          className="absolute top-3 right-3 z-20 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-          style={{
-            background: 'rgba(0,0,0,0.7)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: 'rgba(255,255,255,0.6)',
-            backdropFilter: 'blur(8px)',
-          }}
-        >
-          📡 Cambiar stream
-        </button>
-      )}
-
       {/* Modal de URL */}
       {editando && (
         <div
@@ -379,14 +492,14 @@ function AreaVideo({ streamUrl }) {
           >
             <div>
               <p className="text-white font-black text-lg">📡 Stream en vivo</p>
-              <p className="text-gray-500 text-sm mt-1">Pega el link de YouTube o Twitch</p>
+              <p className="text-gray-500 text-sm mt-1">YouTube y Twitch se embeben · Disney+, Netflix y otros abren en pestaña nueva</p>
             </div>
             <input
               type="url"
               value={url}
               onChange={e => setUrl(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && aplicar()}
-              placeholder="https://youtube.com/watch?v=... o twitch.tv/..."
+              placeholder="https://youtube.com/watch?v=... · twitch.tv/... · disneyplus.com/..."
               className="w-full rounded-xl px-4 py-3 text-sm outline-none"
               style={{
                 background: 'rgba(255,255,255,0.05)',

@@ -270,6 +270,59 @@ export default function Ventas() {
   // ── Guardar edición ───────────────────────────────────────────────
   async function guardarEdicion(id, datos) {
     try {
+      // Extraer listas de productos para ajuste de stock
+      const originales = datos._productosOriginales ?? [];
+      const nuevos     = datos.productos ?? [];
+      delete datos._productosOriginales;
+      delete datos.productos; // No existe como columna en la tabla ventas
+
+      // Calcular diferencias de stock por producto_id
+      // Solo aplica a productos con producto_id (vinculados al inventario)
+      const mapaOriginal = {};
+      for (const p of originales) {
+        if (p.producto_id) {
+          mapaOriginal[p.producto_id] = (mapaOriginal[p.producto_id] || 0) + (parseFloat(p.cantidad) || 0);
+        }
+      }
+      const mapaNuevo = {};
+      for (const p of nuevos) {
+        if (p.producto_id) {
+          mapaNuevo[p.producto_id] = (mapaNuevo[p.producto_id] || 0) + (parseFloat(p.cantidad) || 0);
+        }
+      }
+
+      // Union de todos los producto_id afectados
+      const todosIds = new Set([...Object.keys(mapaOriginal), ...Object.keys(mapaNuevo)]);
+
+      for (const pid of todosIds) {
+        const cantAntes = mapaOriginal[pid] || 0;
+        const cantDespues = mapaNuevo[pid] || 0;
+        const delta = cantAntes - cantDespues; // positivo = devolver stock, negativo = descontar
+        if (delta === 0) continue;
+
+        try {
+          const [prod] = (await db.select('productos', { filtros: { id: pid } })) || [];
+          if (!prod) continue;
+          const stockAnterior = prod.stock ?? 0;
+          const stockNuevo    = stockAnterior + delta;
+          await db.update('productos', pid, { stock: stockNuevo });
+          await db.insert('movimientos_stock', {
+            producto_id:     pid,
+            tipo:            delta > 0 ? 'devolucion' : 'venta',
+            cantidad:        Math.abs(delta),
+            stock_anterior:  stockAnterior,
+            stock_nuevo:     stockNuevo,
+            motivo:          delta > 0
+              ? `Devolución por edición de venta ${id}`
+              : `Cargo por edición de venta ${id}`,
+            referencia:      id,
+            fecha_movimiento: new Date().toISOString(),
+          }).catch(() => {});
+        } catch (e) {
+          console.warn('Error ajustando stock de producto', pid, e.message);
+        }
+      }
+
       await db.update('ventas', id, datos);
       exito('Venta actualizada correctamente');
       setEditar(null);
